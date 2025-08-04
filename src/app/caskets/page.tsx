@@ -293,34 +293,35 @@ export default function CasketsPage() {
                 {caskets.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
-                      No caskets found. Click &apos;Add Casket&apos; to get started.                  </tr>
+                      No caskets found. Click Add Casket to get started.
+                    </td>
+                  </tr>
                 ) : (
-                  caskets.map((casket) => (
-                    <tr key={casket.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{casket.name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{casket.model}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{casket.supplier}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${casket.cost}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${casket.price}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{casket.quantity}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{casket.location}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleEdit(casket)}
-                            className="text-blue-600 hover:text-blue-900"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(casket.id)}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                  caskets.map((casket) => (<tr key={casket.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{casket.name}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{casket.model}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{casket.supplier}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${casket.cost}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${casket.price}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{casket.quantity}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{casket.location}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleEdit(casket)}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(casket.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
                   ))
                 )}
               </tbody>
