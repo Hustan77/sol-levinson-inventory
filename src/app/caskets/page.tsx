@@ -293,7 +293,7 @@ export default function CasketsPage() {
                 {caskets.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
-                      No caskets found. Click "Add Casket" to get started.
+                      No caskets found. Click &quot;Add Casket&quot; to get started.
                     </td>
                   </tr>
                 ) : (
