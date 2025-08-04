@@ -43,7 +43,7 @@ export default function CasketsPage() {
         .from('caskets')
         .select('*')
         .order('name')
-      
+
       if (error) throw error
       setCaskets(data || [])
     } catch (error) {
@@ -55,7 +55,7 @@ export default function CasketsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     try {
       const casketData = {
         name: formData.name,
@@ -73,14 +73,14 @@ export default function CasketsPage() {
           .from('caskets')
           .update(casketData)
           .eq('id', editingCasket.id)
-        
+
         if (error) throw error
       } else {
         // Add new casket
         const { error } = await supabase
           .from('caskets')
           .insert([casketData])
-        
+
         if (error) throw error
       }
 
@@ -124,7 +124,7 @@ export default function CasketsPage() {
           .from('caskets')
           .delete()
           .eq('id', id)
-        
+
         if (error) throw error
         loadCaskets()
       } catch (error) {
@@ -181,7 +181,7 @@ export default function CasketsPage() {
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
-          
+
           {/* Add/Edit Form */}
           {showAddForm && (
             <div className="bg-white shadow rounded-lg p-6 mb-6">
@@ -195,7 +195,7 @@ export default function CasketsPage() {
                     type="text"
                     required
                     value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
                   />
                 </div>
@@ -204,7 +204,7 @@ export default function CasketsPage() {
                   <input
                     type="text"
                     value={formData.model}
-                    onChange={(e) => setFormData({...formData, model: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, model: e.target.value })}
                     className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
                   />
                 </div>
@@ -213,7 +213,7 @@ export default function CasketsPage() {
                   <input
                     type="text"
                     value={formData.supplier}
-                    onChange={(e) => setFormData({...formData, supplier: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
                     className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
                   />
                 </div>
@@ -223,7 +223,7 @@ export default function CasketsPage() {
                     type="number"
                     step="0.01"
                     value={formData.cost}
-                    onChange={(e) => setFormData({...formData, cost: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
                     className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
                   />
                 </div>
@@ -233,7 +233,7 @@ export default function CasketsPage() {
                     type="number"
                     step="0.01"
                     value={formData.price}
-                    onChange={(e) => setFormData({...formData, price: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                     className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
                   />
                 </div>
@@ -242,7 +242,7 @@ export default function CasketsPage() {
                   <input
                     type="number"
                     value={formData.quantity}
-                    onChange={(e) => setFormData({...formData, quantity: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                     className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
                   />
                 </div>
@@ -251,7 +251,7 @@ export default function CasketsPage() {
                   <input
                     type="text"
                     value={formData.location}
-                    onChange={(e) => setFormData({...formData, location: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                     className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
                   />
                 </div>
@@ -293,8 +293,7 @@ export default function CasketsPage() {
                 {caskets.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
-                      No caskets found. Click &quot;Add Casket&quot; to get started.
-                    </td>
+                      No caskets found. Click 'Add Casket' to get started.                    </td>
                   </tr>
                 ) : (
                   caskets.map((casket) => (
