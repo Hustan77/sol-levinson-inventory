@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Package, AlertTriangle, CheckCircle, Clock, Plus, ExternalLink, Calendar } from 'lucide-react'
+import { ArrowLeft, Package, AlertTriangle, Clock, Plus, Search, Edit, Trash2, RotateCcw, Settings } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 interface Casket {
@@ -27,16 +27,42 @@ interface CasketOrder {
   status: string
   order_date: string
   expected_date: string
+  deceased_name: string
 }
 
 export default function CasketsPage() {
   const [caskets, setCaskets] = useState<Casket[]>([])
+  const [filteredCaskets, setFilteredCaskets] = useState<Casket[]>([])
   const [orders, setOrders] = useState<CasketOrder[]>([])
   const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+
+  // Modal states
   const [showOrderModal, setShowOrderModal] = useState<Casket | null>(null)
   const [showAddCasket, setShowAddCasket] = useState(false)
-  const [orderQuantity, setOrderQuantity] = useState(1)
-  const [expectedDate, setExpectedDate] = useState('')
+  const [showEditCasket, setShowEditCasket] = useState<Casket | null>(null)
+  const [showReturnModal, setShowReturnModal] = useState<Casket | null>(null)
+  const [showAdjustModal, setShowAdjustModal] = useState<Casket | null>(null)
+
+  // Form states
+  const [orderData, setOrderData] = useState({
+    deceasedName: '',
+    expectedDate: ''
+  })
+
+  const [returnData, setReturnData] = useState({
+    deceasedName: '',
+    reason: '',
+    notes: ''
+  })
+
+  const [adjustData, setAdjustData] = useState({
+    type: 'add',
+    quantity: 1,
+    reason: '',
+    adjustedBy: '',
+    notes: ''
+  })
 
   const [newCasket, setNewCasket] = useState({
     name: '',
@@ -52,19 +78,29 @@ export default function CasketsPage() {
     loadData()
   }, [])
 
+  useEffect(() => {
+    // Filter caskets based on search term
+    const filtered = caskets.filter(casket =>
+      casket.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      casket.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      casket.supplier.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    setFilteredCaskets(filtered)
+  }, [caskets, searchTerm])
+
   const loadData = async () => {
     try {
       const { data: casketsData } = await supabase
         .from('caskets')
         .select('*')
         .order('name')
-      
+
       const { data: ordersData } = await supabase
         .from('casket_orders')
         .select('*')
-        .eq('status', 'pending')
+        .in('status', ['pending', 'shipped'])
         .order('order_date', { ascending: false })
-      
+
       setCaskets(casketsData || [])
       setOrders(ordersData || [])
     } catch (error) {
@@ -76,43 +112,53 @@ export default function CasketsPage() {
 
   const getStatusColor = (casket: Casket) => {
     if (casket.on_hand === 0) return 'bg-red-500'
-    if (casket.status === 'critical') return 'bg-red-400'
-    if (casket.status === 'low_stock') return 'bg-amber-400'
+    if (casket.on_hand < casket.target_quantity) return 'bg-amber-400'
     if (casket.on_hand >= casket.target_quantity) return 'bg-green-500'
     return 'bg-blue-500'
   }
 
   const getStatusText = (casket: Casket) => {
     if (casket.on_hand === 0) return 'OUT OF STOCK'
-    if (casket.status === 'critical') return 'CRITICAL LOW'
-    if (casket.status === 'low_stock') return 'LOW STOCK'
+    if (casket.on_hand < casket.target_quantity) return 'LOW STOCK'
     if (casket.on_hand >= casket.target_quantity) return 'WELL STOCKED'
     return 'NORMAL'
   }
 
-  const handleOrder = async () => {
-    if (!showOrderModal) return
+  // Place order (automatically deducts from on_hand, adds to on_order)
+  const handlePlaceOrder = async () => {
+    if (!showOrderModal || !orderData.deceasedName) {
+      alert('Please enter the deceased name')
+      return
+    }
+
+    if (showOrderModal.on_hand <= 0) {
+      alert('Cannot place order - no inventory on hand to sell!')
+      return
+    }
 
     try {
-      const expectedDelivery = expectedDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      
+      const expectedDelivery = orderData.expectedDate ||
+        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
       // Create order record
       const { error: orderError } = await supabase
         .from('casket_orders')
         .insert([{
           casket_id: showOrderModal.id,
           order_type: 'replacement',
-          quantity: orderQuantity,
-          expected_date: expectedDelivery
+          quantity: 1,
+          expected_date: expectedDelivery,
+          deceased_name: orderData.deceasedName
         }])
 
       if (orderError) throw orderError
 
-      // Update casket on_order count
+      // Update casket inventory (sell one, order one)
       const { error: updateError } = await supabase
         .from('caskets')
-        .update({ 
-          on_order: showOrderModal.on_order + orderQuantity,
+        .update({
+          on_hand: showOrderModal.on_hand - 1,
+          on_order: showOrderModal.on_order + 1,
           updated_at: new Date().toISOString()
         })
         .eq('id', showOrderModal.id)
@@ -120,48 +166,95 @@ export default function CasketsPage() {
       if (updateError) throw updateError
 
       setShowOrderModal(null)
-      setOrderQuantity(1)
-      setExpectedDate('')
+      setOrderData({ deceasedName: '', expectedDate: '' })
       loadData()
-      alert('Order placed successfully!')
+      alert('Order placed successfully! Inventory updated.')
     } catch (error) {
       console.error('Error placing order:', error)
       alert('Error placing order. Please try again.')
     }
   }
 
-  const handleSale = async (casketId: number, currentOnHand: number) => {
-    if (currentOnHand <= 0) {
-      alert('Cannot sell - no inventory on hand!')
+  // Record return
+  const handleReturn = async () => {
+    if (!showReturnModal || !returnData.deceasedName || !returnData.reason) {
+      alert('Please fill in all required fields')
       return
     }
 
-    if (confirm('Record a sale of this casket?')) {
-      try {
-        const { error } = await supabase
-          .from('caskets')
-          .update({ 
-            on_hand: currentOnHand - 1,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', casketId)
+    try {
+      const { error } = await supabase
+        .from('casket_returns')
+        .insert([{
+          casket_id: showReturnModal.id,
+          deceased_name: returnData.deceasedName,
+          return_reason: returnData.reason,
+          notes: returnData.notes
+        }])
 
-        if (error) throw error
-        loadData()
-        alert('Sale recorded successfully!')
-      } catch (error) {
-        console.error('Error recording sale:', error)
-        alert('Error recording sale. Please try again.')
-      }
+      if (error) throw error
+
+      setShowReturnModal(null)
+      setReturnData({ deceasedName: '', reason: '', notes: '' })
+      alert('Return recorded successfully!')
+    } catch (error) {
+      console.error('Error recording return:', error)
+      alert('Error recording return. Please try again.')
     }
   }
 
+  // Inventory adjustment
+  const handleAdjustment = async () => {
+    if (!showAdjustModal || !adjustData.reason || !adjustData.adjustedBy) {
+      alert('Please fill in all required fields')
+      return
+    }
+
+    try {
+      const quantityChange = adjustData.type === 'add' ? adjustData.quantity : -adjustData.quantity
+      const newOnHand = Math.max(0, showAdjustModal.on_hand + quantityChange)
+
+      // Record adjustment
+      const { error: adjustError } = await supabase
+        .from('inventory_adjustments')
+        .insert([{
+          casket_id: showAdjustModal.id,
+          adjustment_type: adjustData.type,
+          quantity_change: quantityChange,
+          reason: adjustData.reason,
+          adjusted_by: adjustData.adjustedBy,
+          notes: adjustData.notes
+        }])
+
+      if (adjustError) throw adjustError
+
+      // Update casket inventory
+      const { error: updateError } = await supabase
+        .from('caskets')
+        .update({
+          on_hand: newOnHand,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', showAdjustModal.id)
+
+      if (updateError) throw updateError
+
+      setShowAdjustModal(null)
+      setAdjustData({ type: 'add', quantity: 1, reason: '', adjustedBy: '', notes: '' })
+      loadData()
+      alert('Inventory adjustment completed!')
+    } catch (error) {
+      console.error('Error adjusting inventory:', error)
+      alert('Error adjusting inventory. Please try again.')
+    }
+  }
+
+  // Mark arrival
   const handleArrival = async (orderId: number, casketId: number, quantity: number) => {
     try {
-      // Update order status
       const { error: orderError } = await supabase
         .from('casket_orders')
-        .update({ 
+        .update({
           status: 'arrived',
           actual_arrival_date: new Date().toISOString().split('T')[0]
         })
@@ -169,12 +262,11 @@ export default function CasketsPage() {
 
       if (orderError) throw orderError
 
-      // Update casket inventory
       const casket = caskets.find(c => c.id === casketId)
       if (casket) {
         const { error: casketError } = await supabase
           .from('caskets')
-          .update({ 
+          .update({
             on_hand: casket.on_hand + quantity,
             on_order: casket.on_order - quantity,
             updated_at: new Date().toISOString()
@@ -192,7 +284,13 @@ export default function CasketsPage() {
     }
   }
 
+  // Add new casket
   const addNewCasket = async () => {
+    if (!newCasket.name || !newCasket.supplier) {
+      alert('Name and supplier are required')
+      return
+    }
+
     try {
       const { error } = await supabase
         .from('caskets')
@@ -218,6 +316,55 @@ export default function CasketsPage() {
     }
   }
 
+  // Update casket
+  const updateCasket = async () => {
+    if (!showEditCasket) return
+
+    try {
+      const { error } = await supabase
+        .from('caskets')
+        .update({
+          name: showEditCasket.name,
+          model: showEditCasket.model,
+          supplier: showEditCasket.supplier,
+          target_quantity: showEditCasket.target_quantity,
+          location: showEditCasket.location,
+          supplier_instructions: showEditCasket.supplier_instructions,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', showEditCasket.id)
+
+      if (error) throw error
+
+      setShowEditCasket(null)
+      loadData()
+      alert('Casket updated successfully!')
+    } catch (error) {
+      console.error('Error updating casket:', error)
+      alert('Error updating casket. Please try again.')
+    }
+  }
+
+  // Delete casket
+  const deleteCasket = async (casketId: number, casketName: string) => {
+    if (confirm(`Are you sure you want to delete "${casketName}"? This action cannot be undone.`)) {
+      try {
+        const { error } = await supabase
+          .from('caskets')
+          .delete()
+          .eq('id', casketId)
+
+        if (error) throw error
+
+        loadData()
+        alert('Casket deleted successfully!')
+      } catch (error) {
+        console.error('Error deleting casket:', error)
+        alert('Error deleting casket. Please try again.')
+      }
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -238,34 +385,58 @@ export default function CasketsPage() {
               </Link>
               <h1 className="text-3xl font-bold text-slate-900">Caskets Inventory</h1>
             </div>
-            <button
-              onClick={() => setShowAddCasket(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add New Casket Type
-            </button>
+            <div className="flex items-center space-x-4">
+              <Link
+                href="/special-orders"
+                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg"
+              >
+                Special Orders
+              </Link>
+              <button
+                onClick={() => setShowAddCasket(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Casket Type
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        {/* Pending Orders Section */}
+
+        {/* Search Bar */}
+        <div className="mb-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-5 w-5" />
+            <input
+              type="text"
+              placeholder="Search caskets by name, model, or supplier..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+
+        {/* Pending Orders */}
         {orders.length > 0 && (
           <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-8">
             <div className="flex items-center">
               <Clock className="h-5 w-5 text-blue-400 mr-3" />
-              <div>
+              <div className="w-full">
                 <h3 className="text-lg font-medium text-blue-900">Pending Orders ({orders.length})</h3>
-                <div className="mt-2 space-y-1">
+                <div className="mt-2 space-y-2">
                   {orders.map(order => {
                     const casket = caskets.find(c => c.id === order.casket_id)
                     return (
                       <div key={order.id} className="flex justify-between items-center bg-white p-3 rounded">
-                        <span className="text-sm">
-                          {casket?.name} - Qty: {order.quantity} - Expected: {order.expected_date}
-                        </span>
+                        <div>
+                          <span className="font-medium">{casket?.name}</span>
+                          <span className="text-slate-600 ml-2">- {order.deceased_name}</span>
+                          <span className="text-sm text-slate-500 ml-2">Expected: {order.expected_date}</span>
+                        </div>
                         <button
                           onClick={() => handleArrival(order.id, order.casket_id, order.quantity)}
                           className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
@@ -283,28 +454,43 @@ export default function CasketsPage() {
 
         {/* Caskets Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {caskets.map((casket) => (
+          {filteredCaskets.map((casket) => (
             <div key={casket.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-              
+
               {/* Status Bar */}
               <div className={`h-2 ${getStatusColor(casket)}`}></div>
-              
+
               {/* Card Content */}
               <div className="p-6">
                 <div className="flex justify-between items-start mb-4">
-                  <div>
+                  <div className="flex-1">
                     <h3 className="text-xl font-semibold text-slate-900">{casket.name}</h3>
                     <p className="text-slate-600">{casket.model}</p>
                     <p className="text-sm text-slate-500">{casket.supplier}</p>
                   </div>
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                    casket.on_hand === 0 ? 'bg-red-100 text-red-800' :
-                    casket.status === 'low_stock' ? 'bg-amber-100 text-amber-800' :
+                  <div className="flex space-x-1">
+                    <button
+                      onClick={() => setShowEditCasket(casket)}
+                      className="p-2 text-slate-400 hover:text-blue-600"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => deleteCasket(casket.id, casket.name)}
+                      className="p-2 text-slate-400 hover:text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Status Badge */}
+                <span className={`inline-block px-2 py-1 rounded text-xs font-medium mb-4 ${casket.on_hand === 0 ? 'bg-red-100 text-red-800' :
+                  casket.on_hand < casket.target_quantity ? 'bg-amber-100 text-amber-800' :
                     'bg-green-100 text-green-800'
                   }`}>
-                    {getStatusText(casket)}
-                  </span>
-                </div>
+                  {getStatusText(casket)}
+                </span>
 
                 {/* Inventory Stats */}
                 <div className="grid grid-cols-3 gap-4 mb-4">
@@ -344,80 +530,243 @@ export default function CasketsPage() {
                 <div className="space-y-2">
                   <button
                     onClick={() => setShowOrderModal(casket)}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg flex items-center justify-center"
+                    disabled={casket.on_hand <= 0}
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white py-2 px-4 rounded-lg"
                   >
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    Place Order
+                    Sell & Order Replacement
                   </button>
-                  
-                  <div className="grid grid-cols-2 gap-2">
+
+                  <div className="grid grid-cols-3 gap-2">
                     <button
-                      onClick={() => handleSale(casket.id, casket.on_hand)}
-                      disabled={casket.on_hand <= 0}
-                      className="bg-green-600 hover:bg-green-700 disabled:bg-slate-300 text-white py-2 px-3 rounded text-sm"
+                      onClick={() => setShowReturnModal(casket)}
+                      className="bg-orange-600 hover:bg-orange-700 text-white py-2 px-2 rounded text-xs flex items-center justify-center"
                     >
-                      Record Sale
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      Return
                     </button>
-                    <Link 
-                      href={`/special-orders?casket=${casket.id}`}
-                      className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded text-sm text-center"
+                    <button
+                      onClick={() => setShowAdjustModal(casket)}
+                      className="bg-green-600 hover:bg-green-700 text-white py-2 px-2 rounded text-xs flex items-center justify-center"
                     >
-                      Special Order
-                    </Link>
+                      <Settings className="h-3 w-3 mr-1" />
+                      Adjust
+                    </button>
+                    <button
+                      onClick={() => {/* We'll add history view later */ }}
+                      className="bg-slate-600 hover:bg-slate-700 text-white py-2 px-2 rounded text-xs"
+                    >
+                      History
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
           ))}
         </div>
+
+        {filteredCaskets.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-slate-500">No caskets found matching your search.</p>
+          </div>
+        )}
       </main>
 
-      {/* Order Modal */}
+      {/* Place Order Modal */}
       {showOrderModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
-            <h3 className="text-xl font-semibold mb-4">Order {showOrderModal.name}</h3>
-            
-            {/* Supplier Instructions */}
+            <h3 className="text-xl font-semibold mb-4">Sell & Order Replacement: {showOrderModal.name}</h3>
+
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
               <h4 className="font-medium text-blue-900 mb-2">Supplier Instructions:</h4>
               <p className="text-sm text-blue-800">{showOrderModal.supplier_instructions}</p>
             </div>
 
-            {/* Order Form */}
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Quantity</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Deceased Name *</label>
                 <input
-                  type="number"
-                  min="1"
-                  value={orderQuantity}
-                  onChange={(e) => setOrderQuantity(parseInt(e.target.value))}
+                  type="text"
+                  value={orderData.deceasedName}
+                  onChange={(e) => setOrderData({ ...orderData, deceasedName: e.target.value })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                  placeholder="Enter name of deceased"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Expected Delivery Date</label>
                 <input
                   type="date"
-                  value={expectedDate}
-                  onChange={(e) => setExpectedDate(e.target.value)}
+                  value={orderData.expectedDate}
+                  onChange={(e) => setOrderData({ ...orderData, expectedDate: e.target.value })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
                 />
               </div>
             </div>
 
-            {/* Modal Actions */}
             <div className="flex space-x-3 mt-6">
               <button
-                onClick={handleOrder}
+                onClick={handlePlaceOrder}
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg"
               >
-                Place Order
+                Sell & Order Replacement
               </button>
               <button
                 onClick={() => setShowOrderModal(null)}
+                className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Return Modal */}
+      {showReturnModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
+            <h3 className="text-xl font-semibold mb-4">Record Return: {showReturnModal.name}</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Deceased Name *</label>
+                <input
+                  type="text"
+                  value={returnData.deceasedName}
+                  onChange={(e) => setReturnData({ ...returnData, deceasedName: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Return Reason *</label>
+                <select
+                  value={returnData.reason}
+                  onChange={(e) => setReturnData({ ...returnData, reason: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                >
+                  <option value="">Select reason</option>
+                  <option value="Damage during delivery">Damage during delivery</option>
+                  <option value="Manufacturing defect">Manufacturing defect</option>
+                  <option value="Wrong model/color">Wrong model/color</option>
+                  <option value="Family request">Family request</option>
+                  <option value="Size issue">Size issue</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+                <textarea
+                  value={returnData.notes}
+                  onChange={(e) => setReturnData({ ...returnData, notes: e.target.value })}
+                  rows={3}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                />
+              </div>
+            </div>
+
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={handleReturn}
+                className="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-2 px-4 rounded-lg"
+              >
+                Record Return
+              </button>
+              <button
+                onClick={() => setShowReturnModal(null)}
+                className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Inventory Adjustment Modal */}
+      {showAdjustModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
+            <h3 className="text-xl font-semibold mb-4">Adjust Inventory: {showAdjustModal.name}</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Adjustment Type *</label>
+                <select
+                  value={adjustData.type}
+                  onChange={(e) => setAdjustData({ ...adjustData, type: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                >
+                  <option value="add">Add Inventory</option>
+                  <option value="remove">Remove Inventory</option>
+                  <option value="correction">Inventory Correction</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Quantity *</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={adjustData.quantity}
+                  onChange={(e) => setAdjustData({ ...adjustData, quantity: parseInt(e.target.value) })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Reason *</label>
+                <select
+                  value={adjustData.reason}
+                  onChange={(e) => setAdjustData({ ...adjustData, reason: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                >
+                  <option value="">Select reason</option>
+                  <option value="Physical count correction">Physical count correction</option>
+                  <option value="Damage discovered">Damage discovered</option>
+                  <option value="Found additional inventory">Found additional inventory</option>
+                  <option value="Transfer between locations">Transfer between locations</option>
+                  <option value="Display model added/removed">Display model added/removed</option>
+                  <option value="System error correction">System error correction</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Adjusted By *</label>
+                <input
+                  type="text"
+                  value={adjustData.adjustedBy}
+                  onChange={(e) => setAdjustData({ ...adjustData, adjustedBy: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                  placeholder="Your name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+                <textarea
+                  value={adjustData.notes}
+                  onChange={(e) => setAdjustData({ ...adjustData, notes: e.target.value })}
+                  rows={2}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                  placeholder="Additional details..."
+                />
+              </div>
+            </div>
+
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={handleAdjustment}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg"
+              >
+                Apply Adjustment
+              </button>
+              <button
+                onClick={() => setShowAdjustModal(null)}
                 className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
               >
                 Cancel
@@ -432,77 +781,77 @@ export default function CasketsPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-semibold mb-4">Add New Casket Type</h3>
-            
+
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Name *</label>
                 <input
                   type="text"
                   value={newCasket.name}
-                  onChange={(e) => setNewCasket({...newCasket, name: e.target.value})}
+                  onChange={(e) => setNewCasket({ ...newCasket, name: e.target.value })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Model</label>
                 <input
                   type="text"
                   value={newCasket.model}
-                  onChange={(e) => setNewCasket({...newCasket, model: e.target.value})}
+                  onChange={(e) => setNewCasket({ ...newCasket, model: e.target.value })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
                 />
               </div>
-              
+
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Supplier</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Supplier *</label>
                 <input
                   type="text"
                   value={newCasket.supplier}
-                  onChange={(e) => setNewCasket({...newCasket, supplier: e.target.value})}
+                  onChange={(e) => setNewCasket({ ...newCasket, supplier: e.target.value })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Target Quantity (How many to keep on hand)</label>
                 <input
                   type="number"
                   min="0"
                   value={newCasket.target_quantity}
-                  onChange={(e) => setNewCasket({...newCasket, target_quantity: parseInt(e.target.value)})}
+                  onChange={(e) => setNewCasket({ ...newCasket, target_quantity: parseInt(e.target.value) })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Current On Hand</label>
                 <input
                   type="number"
                   min="0"
                   value={newCasket.on_hand}
-                  onChange={(e) => setNewCasket({...newCasket, on_hand: parseInt(e.target.value)})}
+                  onChange={(e) => setNewCasket({ ...newCasket, on_hand: parseInt(e.target.value) })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
                 <select
                   value={newCasket.location}
-                  onChange={(e) => setNewCasket({...newCasket, location: e.target.value})}
+                  onChange={(e) => setNewCasket({ ...newCasket, location: e.target.value })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
                 >
                   <option value="Warehouse">Warehouse</option>
                   <option value="Selection Room">Selection Room</option>
                 </select>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Supplier Ordering Instructions</label>
                 <textarea
                   value={newCasket.supplier_instructions}
-                  onChange={(e) => setNewCasket({...newCasket, supplier_instructions: e.target.value})}
+                  onChange={(e) => setNewCasket({ ...newCasket, supplier_instructions: e.target.value })}
                   rows={3}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
                   placeholder="Include phone numbers, websites, account numbers, lead times, etc."
@@ -519,6 +868,95 @@ export default function CasketsPage() {
               </button>
               <button
                 onClick={() => setShowAddCasket(false)}
+                className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Casket Modal */}
+      {showEditCasket && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-semibold mb-4">Edit Casket: {showEditCasket.name}</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={showEditCasket.name}
+                  onChange={(e) => setShowEditCasket({ ...showEditCasket, name: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Model</label>
+                <input
+                  type="text"
+                  value={showEditCasket.model}
+                  onChange={(e) => setShowEditCasket({ ...showEditCasket, model: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Supplier *</label>
+                <input
+                  type="text"
+                  value={showEditCasket.supplier}
+                  onChange={(e) => setShowEditCasket({ ...showEditCasket, supplier: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Target Quantity</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={showEditCasket.target_quantity}
+                  onChange={(e) => setShowEditCasket({ ...showEditCasket, target_quantity: parseInt(e.target.value) })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
+                <select
+                  value={showEditCasket.location}
+                  onChange={(e) => setShowEditCasket({ ...showEditCasket, location: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                >
+                  <option value="Warehouse">Warehouse</option>
+                  <option value="Selection Room">Selection Room</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Supplier Ordering Instructions</label>
+                <textarea
+                  value={showEditCasket.supplier_instructions}
+                  onChange={(e) => setShowEditCasket({ ...showEditCasket, supplier_instructions: e.target.value })}
+                  rows={3}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                />
+              </div>
+            </div>
+
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={updateCasket}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg"
+              >
+                Update Casket
+              </button>
+              <button
+                onClick={() => setShowEditCasket(null)}
                 className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
               >
                 Cancel
