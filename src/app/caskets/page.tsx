@@ -8,14 +8,17 @@ import { supabase } from '@/lib/supabase'
 interface Casket {
   id: number
   name: string
-  model: string
+  model: string | null
   supplier: string
   target_quantity: number
   on_hand: number
   on_order: number
   backordered: number
+  backordered_quantity: number
+  backorder_reason: string | null
+  backorder_date: string | null
   location: string
-  supplier_instructions: string
+  supplier_instructions: string | null
   status: 'normal' | 'low_stock' | 'critical' | 'backorder'
 }
 
@@ -43,6 +46,12 @@ export default function CasketsPage() {
   const [showEditCasket, setShowEditCasket] = useState<Casket | null>(null)
   const [showReturnModal, setShowReturnModal] = useState<Casket | null>(null)
   const [showAdjustModal, setShowAdjustModal] = useState<Casket | null>(null)
+  const [showBackorderModal, setShowBackorderModal] = useState<Casket | null>(null)
+  const [backorderData, setBackorderData] = useState({
+    quantity: 1,
+    reason: '',
+    notes: ''
+  })
 
   // Form states
   const [orderData, setOrderData] = useState({
@@ -57,7 +66,7 @@ export default function CasketsPage() {
   })
 
   const [adjustData, setAdjustData] = useState({
-    type: 'add',
+    type: 'add' as 'add' | 'remove' | 'correction',
     quantity: 1,
     reason: '',
     adjustedBy: '',
@@ -82,7 +91,7 @@ export default function CasketsPage() {
     // Filter caskets based on search term
     const filtered = caskets.filter(casket =>
       casket.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      casket.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (casket.model || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       casket.supplier.toLowerCase().includes(searchTerm.toLowerCase())
     )
     setFilteredCaskets(filtered)
@@ -112,6 +121,7 @@ export default function CasketsPage() {
 
   const getStatusColor = (casket: Casket) => {
     if (casket.on_hand === 0) return 'bg-red-500'
+    if (casket.backordered_quantity > 0) return 'bg-red-400'
     if (casket.on_hand < casket.target_quantity) return 'bg-amber-400'
     if (casket.on_hand >= casket.target_quantity) return 'bg-green-500'
     return 'bg-blue-500'
@@ -119,6 +129,7 @@ export default function CasketsPage() {
 
   const getStatusText = (casket: Casket) => {
     if (casket.on_hand === 0) return 'OUT OF STOCK'
+    if (casket.backordered_quantity > 0) return 'BACKORDERED'
     if (casket.on_hand < casket.target_quantity) return 'LOW STOCK'
     if (casket.on_hand >= casket.target_quantity) return 'WELL STOCKED'
     return 'NORMAL'
@@ -240,7 +251,7 @@ export default function CasketsPage() {
       if (updateError) throw updateError
 
       setShowAdjustModal(null)
-      setAdjustData({ type: 'add', quantity: 1, reason: '', adjustedBy: '', notes: '' })
+      setAdjustData({ type: 'add' as 'add' | 'remove' | 'correction', quantity: 1, reason: '', adjustedBy: '', notes: '' })
       loadData()
       alert('Inventory adjustment completed!')
     } catch (error) {
@@ -365,6 +376,36 @@ export default function CasketsPage() {
     }
   }
 
+  // Handle backorder
+  const handleBackorder = async () => {
+    if (!showBackorderModal || !backorderData.reason) {
+      alert('Please fill in all required fields')
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('caskets')
+        .update({
+          backordered_quantity: (showBackorderModal.backordered_quantity || 0) + backorderData.quantity,
+          backorder_reason: backorderData.reason,
+          backorder_date: new Date().toISOString().split('T')[0],
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', showBackorderModal.id)
+
+      if (error) throw error
+
+      setShowBackorderModal(null)
+      setBackorderData({ quantity: 1, reason: '', notes: '' })
+      loadData()
+      alert('Backorder recorded successfully!')
+    } catch (error) {
+      console.error('Error recording backorder:', error)
+      alert('Error recording backorder. Please try again.')
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -465,7 +506,7 @@ export default function CasketsPage() {
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex-1">
                     <h3 className="text-xl font-semibold text-slate-900">{casket.name}</h3>
-                    <p className="text-slate-600">{casket.model}</p>
+                    <p className="text-sm text-blue-800">{showOrderModal?.supplier_instructions || 'No instructions available'}</p>
                     <p className="text-sm text-slate-500">{casket.supplier}</p>
                   </div>
                   <div className="flex space-x-1">
@@ -493,17 +534,21 @@ export default function CasketsPage() {
                 </span>
 
                 {/* Inventory Stats */}
-                <div className="grid grid-cols-3 gap-4 mb-4">
+                <div className="grid grid-cols-4 gap-2 mb-4">
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-slate-900">{casket.on_hand}</div>
+                    <div className="text-xl font-bold text-slate-900">{casket.on_hand}</div>
                     <div className="text-xs text-slate-500">On Hand</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">{casket.on_order}</div>
+                    <div className="text-xl font-bold text-blue-600">{casket.on_order}</div>
                     <div className="text-xs text-slate-500">On Order</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-slate-600">{casket.target_quantity}</div>
+                    <div className="text-xl font-bold text-red-600">{casket.backordered_quantity || 0}</div>
+                    <div className="text-xs text-slate-500">Backorder</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xl font-bold text-slate-600">{casket.target_quantity}</div>
                     <div className="text-xs text-slate-500">Target</div>
                   </div>
                 </div>
@@ -514,14 +559,35 @@ export default function CasketsPage() {
                   <span className="text-sm text-slate-600">{casket.location}</span>
                 </div>
 
-                {/* Shortage Alert */}
+                {/* Shortage Alert - Updated to exclude backorders from target */}
                 {(casket.on_hand + casket.on_order) < casket.target_quantity && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
                     <div className="flex items-center">
                       <AlertTriangle className="h-4 w-4 text-red-500 mr-2" />
                       <span className="text-sm text-red-700">
                         Short by {casket.target_quantity - (casket.on_hand + casket.on_order)} units
+                        {casket.backordered_quantity > 0 && (
+                          <span className="block mt-1">({casket.backordered_quantity} backordered - not counted)</span>
+                        )}
                       </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Backorder Alert */}
+                {casket.backordered_quantity > 0 && (
+                  <div className="bg-red-100 border border-red-300 rounded-lg p-3 mb-4">
+                    <div className="flex items-center">
+                      <AlertTriangle className="h-4 w-4 text-red-600 mr-2" />
+                      <div className="text-sm text-red-800">
+                        <div className="font-medium">{casket.backordered_quantity} units backordered</div>
+                        {casket.backorder_reason && (
+                          <div className="mt-1">Reason: {casket.backorder_reason}</div>
+                        )}
+                        {casket.backorder_date && (
+                          <div>Date: {casket.backorder_date}</div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -536,24 +602,30 @@ export default function CasketsPage() {
                     Sell & Order Replacement
                   </button>
 
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-4 gap-1">
                     <button
                       onClick={() => setShowReturnModal(casket)}
-                      className="bg-orange-600 hover:bg-orange-700 text-white py-2 px-2 rounded text-xs flex items-center justify-center"
+                      className="bg-orange-600 hover:bg-orange-700 text-white py-2 px-1 rounded text-xs flex items-center justify-center"
                     >
                       <RotateCcw className="h-3 w-3 mr-1" />
                       Return
                     </button>
                     <button
                       onClick={() => setShowAdjustModal(casket)}
-                      className="bg-green-600 hover:bg-green-700 text-white py-2 px-2 rounded text-xs flex items-center justify-center"
+                      className="bg-green-600 hover:bg-green-700 text-white py-2 px-1 rounded text-xs flex items-center justify-center"
                     >
                       <Settings className="h-3 w-3 mr-1" />
                       Adjust
                     </button>
                     <button
+                      onClick={() => setShowBackorderModal(casket)}
+                      className="bg-red-600 hover:bg-red-700 text-white py-2 px-1 rounded text-xs"
+                    >
+                      Backorder
+                    </button>
+                    <button
                       onClick={() => {/* We'll add history view later */ }}
-                      className="bg-slate-600 hover:bg-slate-700 text-white py-2 px-2 rounded text-xs"
+                      className="bg-slate-600 hover:bg-slate-700 text-white py-2 px-1 rounded text-xs"
                     >
                       History
                     </button>
@@ -579,7 +651,7 @@ export default function CasketsPage() {
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
               <h4 className="font-medium text-blue-900 mb-2">Supplier Instructions:</h4>
-              <p className="text-sm text-blue-800">{showOrderModal.supplier_instructions}</p>
+              <p className="text-sm text-blue-800">{showOrderModal?.supplier_instructions || 'No instructions available'}</p>
             </div>
 
             <div className="space-y-4">
@@ -697,7 +769,7 @@ export default function CasketsPage() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Adjustment Type *</label>
                 <select
                   value={adjustData.type}
-                  onChange={(e) => setAdjustData({ ...adjustData, type: e.target.value })}
+                  onChange={(e) => setAdjustData({ ...adjustData, type: e.target.value as 'add' | 'remove' | 'correction' })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
                 >
                   <option value="add">Add Inventory</option>
@@ -898,7 +970,7 @@ export default function CasketsPage() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Model</label>
                 <input
                   type="text"
-                  value={showEditCasket.model}
+                  value={showEditCasket.model || ''}
                   onChange={(e) => setShowEditCasket({ ...showEditCasket, model: e.target.value })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
                 />
@@ -940,7 +1012,7 @@ export default function CasketsPage() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Supplier Ordering Instructions</label>
                 <textarea
-                  value={showEditCasket.supplier_instructions}
+                  value={showEditCasket.supplier_instructions || ''}
                   onChange={(e) => setShowEditCasket({ ...showEditCasket, supplier_instructions: e.target.value })}
                   rows={3}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
@@ -957,6 +1029,71 @@ export default function CasketsPage() {
               </button>
               <button
                 onClick={() => setShowEditCasket(null)}
+                className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Backorder Modal */}
+      {showBackorderModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
+            <h3 className="text-xl font-semibold mb-4">Record Backorder: {showBackorderModal.name}</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Quantity to Backorder *</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={backorderData.quantity}
+                  onChange={(e) => setBackorderData({ ...backorderData, quantity: parseInt(e.target.value) })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Reason *</label>
+                <select
+                  value={backorderData.reason}
+                  onChange={(e) => setBackorderData({ ...backorderData, reason: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                >
+                  <option value="">Select reason</option>
+                  <option value="Supplier out of stock">Supplier out of stock</option>
+                  <option value="Manufacturing delay">Manufacturing delay</option>
+                  <option value="Shipping issues">Shipping issues</option>
+                  <option value="Quality control hold">Quality control hold</option>
+                  <option value="Discontinued model">Discontinued model</option>
+                  <option value="Seasonal unavailability">Seasonal unavailability</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+                <textarea
+                  value={backorderData.notes}
+                  onChange={(e) => setBackorderData({ ...backorderData, notes: e.target.value })}
+                  rows={3}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                  placeholder="Additional details about the backorder..."
+                />
+              </div>
+            </div>
+
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={handleBackorder}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg"
+              >
+                Record Backorder
+              </button>
+              <button
+                onClick={() => setShowBackorderModal(null)}
                 className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
               >
                 Cancel
