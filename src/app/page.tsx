@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Package, Flame, Users, ShoppingCart, Plus, AlertTriangle, Search, Calendar } from 'lucide-react'
+import { Package, Flame, Users, ShoppingCart, Plus, AlertTriangle, Calendar } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import OrderModal from './components/OrderModal'
 
