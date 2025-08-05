@@ -1,9 +1,9 @@
 'use client'
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars, prefer-const */
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Package, AlertTriangle, Clock, Plus, Search, Edit, Trash2, RotateCcw, Settings, History, Eye } from 'lucide-react'
+import { ArrowLeft, Package, AlertTriangle, Clock, Plus, Search, Edit, Trash2, RotateCcw, Settings, History } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 interface Casket {
@@ -804,8 +804,8 @@ export default function CasketsPage() {
                   <button
                     onClick={() => setOrderData({ ...orderData, isReturnReplacement: false })}
                     className={`px-4 py-2 rounded-lg text-sm font-medium ${!orderData.isReturnReplacement
-                        ? 'bg-sky-100 text-sky-700 border border-sky-300'
-                        : 'bg-slate-100 text-slate-600 border border-slate-300'
+                      ? 'bg-sky-100 text-sky-700 border border-sky-300'
+                      : 'bg-slate-100 text-slate-600 border border-slate-300'
                       }`}
                   >
                     Regular Sale & Order
@@ -813,8 +813,8 @@ export default function CasketsPage() {
                   <button
                     onClick={() => setOrderData({ ...orderData, isReturnReplacement: true })}
                     className={`px-4 py-2 rounded-lg text-sm font-medium ${orderData.isReturnReplacement
-                        ? 'bg-orange-100 text-orange-700 border border-orange-300'
-                        : 'bg-slate-100 text-slate-600 border border-slate-300'
+                      ? 'bg-orange-100 text-orange-700 border border-orange-300'
+                      : 'bg-slate-100 text-slate-600 border border-slate-300'
                       }`}
                   >
                     Return/Exchange
