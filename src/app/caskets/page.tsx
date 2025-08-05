@@ -1,8 +1,9 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Package, AlertTriangle, Clock, Plus, Search, Edit, Trash2, RotateCcw, Settings } from 'lucide-react'
+import { ArrowLeft, Package, AlertTriangle, Clock, Plus, Search, Edit, Trash2, RotateCcw, Settings, History, Eye } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 interface Casket {
@@ -19,6 +20,8 @@ interface Casket {
   backorder_date: string | null
   location: string
   supplier_instructions: string | null
+  interior_dimensions: string | null
+  exterior_dimensions: string | null
   status: 'normal' | 'low_stock' | 'critical' | 'backorder'
 }
 
@@ -31,6 +34,17 @@ interface CasketOrder {
   order_date: string
   expected_date: string
   deceased_name: string
+  po_number: string
+  is_return_replacement: boolean
+}
+
+interface CasketHistory {
+  id: number
+  action: string
+  details: string
+  quantity_change: number
+  performed_by: string
+  performed_at: string
 }
 
 export default function CasketsPage() {
@@ -46,23 +60,30 @@ export default function CasketsPage() {
   const [showEditCasket, setShowEditCasket] = useState<Casket | null>(null)
   const [showReturnModal, setShowReturnModal] = useState<Casket | null>(null)
   const [showAdjustModal, setShowAdjustModal] = useState<Casket | null>(null)
-  const [showBackorderModal, setShowBackorderModal] = useState<Casket | null>(null)
-  const [backorderData, setBackorderData] = useState({
-    quantity: 1,
-    reason: '',
-    notes: ''
-  })
+  const [showHistoryModal, setShowHistoryModal] = useState<Casket | null>(null)
+  const [showArrivalModal, setShowArrivalModal] = useState<CasketOrder | null>(null)
+  const [casketHistory, setCasketHistory] = useState<CasketHistory[]>([])
 
   // Form states
   const [orderData, setOrderData] = useState({
     deceasedName: '',
-    expectedDate: ''
+    expectedDate: '',
+    expectedDateTbd: false,
+    poNumber: '',
+    isBackordered: false,
+    backorderNotes: '',
+    isReturnReplacement: false,
+    returnNotes: ''
   })
 
   const [returnData, setReturnData] = useState({
     deceasedName: '',
     reason: '',
-    notes: ''
+    notes: '',
+    expectsReplacement: false,
+    replacementPoNumber: '',
+    replacementExpectedDate: '',
+    replacementExpectedDateTbd: false
   })
 
   const [adjustData, setAdjustData] = useState({
@@ -73,6 +94,11 @@ export default function CasketsPage() {
     notes: ''
   })
 
+  const [arrivalData, setArrivalData] = useState({
+    markedBy: '',
+    arrivedAt: new Date().toISOString().slice(0, 16) // Format for datetime-local input
+  })
+
   const [newCasket, setNewCasket] = useState({
     name: '',
     model: '',
@@ -80,7 +106,9 @@ export default function CasketsPage() {
     target_quantity: 1,
     on_hand: 0,
     location: 'Warehouse',
-    supplier_instructions: ''
+    supplier_instructions: '',
+    interior_dimensions: '',
+    exterior_dimensions: ''
   })
 
   useEffect(() => {
@@ -119,74 +147,134 @@ export default function CasketsPage() {
     }
   }
 
+  const loadCasketHistory = async (casketId: number) => {
+    try {
+      const { data } = await supabase
+        .from('casket_history')
+        .select('*')
+        .eq('casket_id', casketId)
+        .order('performed_at', { ascending: false })
+
+      setCasketHistory(data || [])
+    } catch (error) {
+      console.error('Error loading history:', error)
+    }
+  }
+
+  const recordHistory = async (casketId: number, action: string, details: string, quantityChange: number = 0, performedBy: string = 'System') => {
+    try {
+      await supabase
+        .from('casket_history')
+        .insert([{
+          casket_id: casketId,
+          action,
+          details,
+          quantity_change: quantityChange,
+          performed_by: performedBy
+        }])
+    } catch (error) {
+      console.error('Error recording history:', error)
+    }
+  }
+
   const getStatusColor = (casket: Casket) => {
     if (casket.on_hand === 0) return 'bg-red-500'
     if (casket.backordered_quantity > 0) return 'bg-red-400'
-    if (casket.on_hand < casket.target_quantity) return 'bg-amber-400'
-    if (casket.on_hand >= casket.target_quantity) return 'bg-green-500'
+    if ((casket.on_hand + casket.on_order) < casket.target_quantity) return 'bg-amber-400'
+    if ((casket.on_hand + casket.on_order) >= casket.target_quantity) return 'bg-green-500'
     return 'bg-blue-500'
   }
 
   const getStatusText = (casket: Casket) => {
     if (casket.on_hand === 0) return 'OUT OF STOCK'
     if (casket.backordered_quantity > 0) return 'BACKORDERED'
-    if (casket.on_hand < casket.target_quantity) return 'LOW STOCK'
-    if (casket.on_hand >= casket.target_quantity) return 'WELL STOCKED'
+    if ((casket.on_hand + casket.on_order) < casket.target_quantity) return 'LOW STOCK'
+    if ((casket.on_hand + casket.on_order) >= casket.target_quantity) return 'WELL STOCKED'
     return 'NORMAL'
   }
 
-  // Place order (automatically deducts from on_hand, adds to on_order)
+  // Place order with full functionality
   const handlePlaceOrder = async () => {
-    if (!showOrderModal || !orderData.deceasedName) {
-      alert('Please enter the deceased name')
+    if (!showOrderModal || !orderData.deceasedName || !orderData.poNumber) {
+      alert('Please enter the deceased name and PO number')
       return
     }
 
-    if (showOrderModal.on_hand <= 0) {
+    if (!orderData.isReturnReplacement && showOrderModal.on_hand <= 0) {
       alert('Cannot place order - no inventory on hand to sell!')
       return
     }
 
     try {
-      const expectedDelivery = orderData.expectedDate ||
-        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      const expectedDelivery = orderData.expectedDateTbd ? null :
+        (orderData.expectedDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
 
       // Create order record
       const { error: orderError } = await supabase
         .from('casket_orders')
         .insert([{
           casket_id: showOrderModal.id,
-          order_type: 'replacement',
+          order_type: orderData.isReturnReplacement ? 'return_replacement' : 'replacement',
           quantity: 1,
           expected_date: expectedDelivery,
-          deceased_name: orderData.deceasedName
+          expected_date_tbd: orderData.expectedDateTbd,
+          deceased_name: orderData.deceasedName,
+          po_number: orderData.poNumber,
+          is_return_replacement: orderData.isReturnReplacement,
+          return_notes: orderData.returnNotes,
+          backorder_notes: orderData.backorderNotes
         }])
 
       if (orderError) throw orderError
 
-      // Update casket inventory (sell one, order one)
+      // Update casket inventory
+      let updateData: any = { updated_at: new Date().toISOString() }
+
+      if (!orderData.isReturnReplacement) {
+        // Regular sale - deduct from on_hand
+        updateData.on_hand = showOrderModal.on_hand - 1
+      }
+
+      if (orderData.isBackordered) {
+        updateData.backordered_quantity = (showOrderModal.backordered_quantity || 0) + 1
+        updateData.backorder_reason = orderData.backorderNotes || 'Backordered during ordering'
+        updateData.backorder_date = new Date().toISOString().split('T')[0]
+      } else {
+        updateData.on_order = showOrderModal.on_order + 1
+      }
+
       const { error: updateError } = await supabase
         .from('caskets')
-        .update({
-          on_hand: showOrderModal.on_hand - 1,
-          on_order: showOrderModal.on_order + 1,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', showOrderModal.id)
 
       if (updateError) throw updateError
 
+      // Record history
+      const historyAction = orderData.isReturnReplacement ? 'Return Replacement Order' : 'Sale & Order'
+      const historyDetails = `${orderData.deceasedName} - PO: ${orderData.poNumber}${orderData.isBackordered ? ' (Backordered)' : ''}`
+      await recordHistory(showOrderModal.id, historyAction, historyDetails, orderData.isReturnReplacement ? 0 : -1)
+
       setShowOrderModal(null)
-      setOrderData({ deceasedName: '', expectedDate: '' })
+      setOrderData({
+        deceasedName: '',
+        expectedDate: '',
+        expectedDateTbd: false,
+        poNumber: '',
+        isBackordered: false,
+        backorderNotes: '',
+        isReturnReplacement: false,
+        returnNotes: ''
+      })
       loadData()
-      alert('Order placed successfully! Inventory updated.')
+      alert('Order placed successfully!')
     } catch (error) {
       console.error('Error placing order:', error)
       alert('Error placing order. Please try again.')
     }
   }
 
-  // Record return
+  // Enhanced return handling
   const handleReturn = async () => {
     if (!showReturnModal || !returnData.deceasedName || !returnData.reason) {
       alert('Please fill in all required fields')
@@ -194,19 +282,72 @@ export default function CasketsPage() {
     }
 
     try {
+      let replacementOrderId = null
+
+      // If expecting replacement, create the replacement order
+      if (returnData.expectsReplacement && returnData.replacementPoNumber) {
+        const expectedDelivery = returnData.replacementExpectedDateTbd ? null :
+          (returnData.replacementExpectedDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+
+        const { data: orderData, error: orderError } = await supabase
+          .from('casket_orders')
+          .insert([{
+            casket_id: showReturnModal.id,
+            order_type: 'return_replacement',
+            quantity: 1,
+            expected_date: expectedDelivery,
+            expected_date_tbd: returnData.replacementExpectedDateTbd,
+            deceased_name: returnData.deceasedName,
+            po_number: returnData.replacementPoNumber,
+            is_return_replacement: true,
+            return_notes: `Replacement for return: ${returnData.reason}`
+          }])
+          .select()
+
+        if (orderError) throw orderError
+        replacementOrderId = orderData[0].id
+
+        // Update inventory for replacement order
+        const { error: updateError } = await supabase
+          .from('caskets')
+          .update({
+            on_order: showReturnModal.on_order + 1,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', showReturnModal.id)
+
+        if (updateError) throw updateError
+      }
+
+      // Record the return
       const { error } = await supabase
         .from('casket_returns')
         .insert([{
           casket_id: showReturnModal.id,
           deceased_name: returnData.deceasedName,
           return_reason: returnData.reason,
-          notes: returnData.notes
+          notes: returnData.notes,
+          expects_replacement: returnData.expectsReplacement,
+          replacement_order_id: replacementOrderId
         }])
 
       if (error) throw error
 
+      // Record history
+      const historyDetails = `${returnData.deceasedName} - ${returnData.reason}${returnData.expectsReplacement ? ' (Replacement ordered)' : ''}`
+      await recordHistory(showReturnModal.id, 'Return', historyDetails)
+
       setShowReturnModal(null)
-      setReturnData({ deceasedName: '', reason: '', notes: '' })
+      setReturnData({
+        deceasedName: '',
+        reason: '',
+        notes: '',
+        expectsReplacement: false,
+        replacementPoNumber: '',
+        replacementExpectedDate: '',
+        replacementExpectedDateTbd: false
+      })
+      loadData()
       alert('Return recorded successfully!')
     } catch (error) {
       console.error('Error recording return:', error)
@@ -250,6 +391,9 @@ export default function CasketsPage() {
 
       if (updateError) throw updateError
 
+      // Record history
+      await recordHistory(showAdjustModal.id, `Inventory ${adjustData.type}`, adjustData.reason, quantityChange, adjustData.adjustedBy)
+
       setShowAdjustModal(null)
       setAdjustData({ type: 'add' as 'add' | 'remove' | 'correction', quantity: 1, reason: '', adjustedBy: '', notes: '' })
       loadData()
@@ -260,33 +404,48 @@ export default function CasketsPage() {
     }
   }
 
-  // Mark arrival
-  const handleArrival = async (orderId: number, casketId: number, quantity: number) => {
+  // Enhanced arrival marking
+  const handleArrival = async () => {
+    if (!showArrivalModal || !arrivalData.markedBy) {
+      alert('Please enter who is marking this arrival')
+      return
+    }
+
     try {
       const { error: orderError } = await supabase
         .from('casket_orders')
         .update({
           status: 'arrived',
-          actual_arrival_date: new Date().toISOString().split('T')[0]
+          actual_arrival_date: new Date(arrivalData.arrivedAt).toISOString().split('T')[0],
+          arrived_marked_by: arrivalData.markedBy,
+          arrived_marked_at: new Date(arrivalData.arrivedAt).toISOString()
         })
-        .eq('id', orderId)
+        .eq('id', showArrivalModal.id)
 
       if (orderError) throw orderError
 
-      const casket = caskets.find(c => c.id === casketId)
+      const casket = caskets.find(c => c.id === showArrivalModal.casket_id)
       if (casket) {
         const { error: casketError } = await supabase
           .from('caskets')
           .update({
-            on_hand: casket.on_hand + quantity,
-            on_order: casket.on_order - quantity,
+            on_hand: casket.on_hand + showArrivalModal.quantity,
+            on_order: Math.max(0, casket.on_order - showArrivalModal.quantity),
             updated_at: new Date().toISOString()
           })
-          .eq('id', casketId)
+          .eq('id', showArrivalModal.casket_id)
 
         if (casketError) throw casketError
+
+        // Record history
+        await recordHistory(casket.id, 'Arrival', `PO: ${showArrivalModal.po_number} - Marked by ${arrivalData.markedBy}`, showArrivalModal.quantity, arrivalData.markedBy)
       }
 
+      setShowArrivalModal(null)
+      setArrivalData({
+        markedBy: '',
+        arrivedAt: new Date().toISOString().slice(0, 16)
+      })
       loadData()
       alert('Arrival recorded successfully!')
     } catch (error) {
@@ -316,7 +475,9 @@ export default function CasketsPage() {
         target_quantity: 1,
         on_hand: 0,
         location: 'Warehouse',
-        supplier_instructions: ''
+        supplier_instructions: '',
+        interior_dimensions: '',
+        exterior_dimensions: ''
       })
       setShowAddCasket(false)
       loadData()
@@ -341,6 +502,8 @@ export default function CasketsPage() {
           target_quantity: showEditCasket.target_quantity,
           location: showEditCasket.location,
           supplier_instructions: showEditCasket.supplier_instructions,
+          interior_dimensions: showEditCasket.interior_dimensions,
+          exterior_dimensions: showEditCasket.exterior_dimensions,
           updated_at: new Date().toISOString()
         })
         .eq('id', showEditCasket.id)
@@ -376,48 +539,18 @@ export default function CasketsPage() {
     }
   }
 
-  // Handle backorder
-  const handleBackorder = async () => {
-    if (!showBackorderModal || !backorderData.reason) {
-      alert('Please fill in all required fields')
-      return
-    }
-
-    try {
-      const { error } = await supabase
-        .from('caskets')
-        .update({
-          backordered_quantity: (showBackorderModal.backordered_quantity || 0) + backorderData.quantity,
-          backorder_reason: backorderData.reason,
-          backorder_date: new Date().toISOString().split('T')[0],
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', showBackorderModal.id)
-
-      if (error) throw error
-
-      setShowBackorderModal(null)
-      setBackorderData({ quantity: 1, reason: '', notes: '' })
-      loadData()
-      alert('Backorder recorded successfully!')
-    } catch (error) {
-      console.error('Error recording backorder:', error)
-      alert('Error recording backorder. Please try again.')
-    }
-  }
-
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-stone-100 flex items-center justify-center">
         <div className="text-xl">Loading caskets...</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-stone-100">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
+      <header className="bg-white/80 backdrop-blur-sm shadow-sm border-b border-slate-200/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center">
@@ -429,13 +562,13 @@ export default function CasketsPage() {
             <div className="flex items-center space-x-4">
               <Link
                 href="/special-orders"
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg"
+                className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg"
               >
                 Special Orders
               </Link>
               <button
                 onClick={() => setShowAddCasket(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center"
+                className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg flex items-center"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Add Casket Type
@@ -456,31 +589,35 @@ export default function CasketsPage() {
               placeholder="Search caskets by name, model, or supplier..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent"
             />
           </div>
         </div>
 
         {/* Pending Orders */}
         {orders.length > 0 && (
-          <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-8">
+          <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 mb-8">
             <div className="flex items-center">
-              <Clock className="h-5 w-5 text-blue-400 mr-3" />
+              <Clock className="h-5 w-5 text-sky-500 mr-3" />
               <div className="w-full">
-                <h3 className="text-lg font-medium text-blue-900">Pending Orders ({orders.length})</h3>
+                <h3 className="text-lg font-medium text-sky-900">Pending Orders ({orders.length})</h3>
                 <div className="mt-2 space-y-2">
                   {orders.map(order => {
                     const casket = caskets.find(c => c.id === order.casket_id)
                     return (
-                      <div key={order.id} className="flex justify-between items-center bg-white p-3 rounded">
+                      <div key={order.id} className="flex justify-between items-center bg-white p-3 rounded-lg">
                         <div>
                           <span className="font-medium">{casket?.name}</span>
                           <span className="text-slate-600 ml-2">- {order.deceased_name}</span>
-                          <span className="text-sm text-slate-500 ml-2">Expected: {order.expected_date}</span>
+                          <span className="text-sm text-slate-500 ml-2">PO: {order.po_number}</span>
+                          <span className="text-sm text-slate-500 ml-2">Expected: {order.expected_date || 'TBD'}</span>
+                          {order.is_return_replacement && (
+                            <span className="ml-2 px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded">RETURN/EXCHANGE</span>
+                          )}
                         </div>
                         <button
-                          onClick={() => handleArrival(order.id, order.casket_id, order.quantity)}
-                          className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
+                          onClick={() => setShowArrivalModal(order)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded text-sm"
                         >
                           Mark Arrived
                         </button>
@@ -496,7 +633,7 @@ export default function CasketsPage() {
         {/* Caskets Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredCaskets.map((casket) => (
-            <div key={casket.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div key={casket.id} className="bg-white/70 backdrop-blur-sm rounded-xl shadow-sm border border-slate-200/50 overflow-hidden">
 
               {/* Status Bar */}
               <div className={`h-2 ${getStatusColor(casket)}`}></div>
@@ -506,13 +643,13 @@ export default function CasketsPage() {
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex-1">
                     <h3 className="text-xl font-semibold text-slate-900">{casket.name}</h3>
-                    <p className="text-sm text-blue-800">{showOrderModal?.supplier_instructions || 'No instructions available'}</p>
+                    <p className="text-slate-600">{casket.model || ''}</p>
                     <p className="text-sm text-slate-500">{casket.supplier}</p>
                   </div>
                   <div className="flex space-x-1">
                     <button
                       onClick={() => setShowEditCasket(casket)}
-                      className="p-2 text-slate-400 hover:text-blue-600"
+                      className="p-2 text-slate-400 hover:text-sky-600"
                     >
                       <Edit className="h-4 w-4" />
                     </button>
@@ -527,8 +664,8 @@ export default function CasketsPage() {
 
                 {/* Status Badge */}
                 <span className={`inline-block px-2 py-1 rounded text-xs font-medium mb-4 ${casket.on_hand === 0 ? 'bg-red-100 text-red-800' :
-                  casket.on_hand < casket.target_quantity ? 'bg-amber-100 text-amber-800' :
-                    'bg-green-100 text-green-800'
+                  (casket.on_hand + casket.on_order) < casket.target_quantity ? 'bg-amber-100 text-amber-800' :
+                    'bg-emerald-100 text-emerald-800'
                   }`}>
                   {getStatusText(casket)}
                 </span>
@@ -540,7 +677,7 @@ export default function CasketsPage() {
                     <div className="text-xs text-slate-500">On Hand</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-xl font-bold text-blue-600">{casket.on_order}</div>
+                    <div className="text-xl font-bold text-sky-600">{casket.on_order}</div>
                     <div className="text-xs text-slate-500">On Order</div>
                   </div>
                   <div className="text-center">
@@ -559,7 +696,20 @@ export default function CasketsPage() {
                   <span className="text-sm text-slate-600">{casket.location}</span>
                 </div>
 
-                {/* Shortage Alert - Updated to exclude backorders from target */}
+                {/* Dimensions */}
+                {(casket.interior_dimensions || casket.exterior_dimensions) && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4">
+                    <h4 className="font-medium text-slate-900 text-sm mb-1">Dimensions:</h4>
+                    {casket.interior_dimensions && (
+                      <p className="text-sm text-slate-700">Interior: {casket.interior_dimensions}</p>
+                    )}
+                    {casket.exterior_dimensions && (
+                      <p className="text-sm text-slate-700">Exterior: {casket.exterior_dimensions}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Shortage Alert */}
                 {(casket.on_hand + casket.on_order) < casket.target_quantity && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
                     <div className="flex items-center">
@@ -596,10 +746,9 @@ export default function CasketsPage() {
                 <div className="space-y-2">
                   <button
                     onClick={() => setShowOrderModal(casket)}
-                    disabled={casket.on_hand <= 0}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white py-2 px-4 rounded-lg"
+                    className="w-full bg-sky-600 hover:bg-sky-700 text-white py-2 px-4 rounded-lg"
                   >
-                    Sell & Order Replacement
+                    Order Casket
                   </button>
 
                   <div className="grid grid-cols-3 gap-1">
@@ -612,15 +761,19 @@ export default function CasketsPage() {
                     </button>
                     <button
                       onClick={() => setShowAdjustModal(casket)}
-                      className="bg-green-600 hover:bg-green-700 text-white py-2 px-1 rounded text-xs flex items-center justify-center"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-1 rounded text-xs flex items-center justify-center"
                     >
                       <Settings className="h-3 w-3 mr-1" />
                       Adjust
                     </button>
                     <button
-                      onClick={() => {/* We'll add history view later */ }}
-                      className="bg-slate-600 hover:bg-slate-700 text-white py-2 px-1 rounded text-xs"
+                      onClick={() => {
+                        setShowHistoryModal(casket)
+                        loadCasketHistory(casket.id)
+                      }}
+                      className="bg-slate-600 hover:bg-slate-700 text-white py-2 px-1 rounded text-xs flex items-center justify-center"
                     >
+                      <History className="h-3 w-3 mr-1" />
                       History
                     </button>
                   </div>
@@ -637,46 +790,143 @@ export default function CasketsPage() {
         )}
       </main>
 
-      {/* Place Order Modal */}
+      {/* Enhanced Order Modal */}
       {showOrderModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
-            <h3 className="text-xl font-semibold mb-4">Sell & Order Replacement: {showOrderModal.name}</h3>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <h4 className="font-medium text-blue-900 mb-2">Supplier Instructions:</h4>
-              <p className="text-sm text-blue-800">{showOrderModal?.supplier_instructions || 'No instructions available'}</p>
-            </div>
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-semibold mb-4">Order Casket: {showOrderModal.name}</h3>
 
             <div className="space-y-4">
+              {/* Order Type Selection */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Deceased Name *</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Order Type</label>
+                <div className="flex space-x-4">
+                  <button
+                    onClick={() => setOrderData({ ...orderData, isReturnReplacement: false })}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium ${!orderData.isReturnReplacement
+                        ? 'bg-sky-100 text-sky-700 border border-sky-300'
+                        : 'bg-slate-100 text-slate-600 border border-slate-300'
+                      }`}
+                  >
+                    Regular Sale & Order
+                  </button>
+                  <button
+                    onClick={() => setOrderData({ ...orderData, isReturnReplacement: true })}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium ${orderData.isReturnReplacement
+                        ? 'bg-orange-100 text-orange-700 border border-orange-300'
+                        : 'bg-slate-100 text-slate-600 border border-slate-300'
+                      }`}
+                  >
+                    Return/Exchange
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  {orderData.isReturnReplacement ? 'Family Name' : 'Deceased Name'} *
+                </label>
                 <input
                   type="text"
                   value={orderData.deceasedName}
                   onChange={(e) => setOrderData({ ...orderData, deceasedName: e.target.value })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
-                  placeholder="Enter name of deceased"
+                  placeholder={orderData.isReturnReplacement ? "Enter family name" : "Enter name of deceased"}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Expected Delivery Date</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">PO Number *</label>
                 <input
-                  type="date"
-                  value={orderData.expectedDate}
-                  onChange={(e) => setOrderData({ ...orderData, expectedDate: e.target.value })}
+                  type="text"
+                  value={orderData.poNumber}
+                  onChange={(e) => setOrderData({ ...orderData, poNumber: e.target.value })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                  placeholder="Enter purchase order number"
                 />
               </div>
+
+              <div>
+                <div className="flex items-center mb-2">
+                  <input
+                    type="checkbox"
+                    id="expectedDateTbd"
+                    checked={orderData.expectedDateTbd}
+                    onChange={(e) => setOrderData({ ...orderData, expectedDateTbd: e.target.checked })}
+                    className="rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                  />
+                  <label htmlFor="expectedDateTbd" className="ml-2 text-sm text-slate-700">
+                    Expected delivery date is TBD
+                  </label>
+                </div>
+
+                {!orderData.expectedDateTbd && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Expected Delivery Date</label>
+                    <input
+                      type="date"
+                      value={orderData.expectedDate}
+                      onChange={(e) => setOrderData({ ...orderData, expectedDate: e.target.value })}
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="isBackordered"
+                  checked={orderData.isBackordered}
+                  onChange={(e) => setOrderData({ ...orderData, isBackordered: e.target.checked })}
+                  className="rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <label htmlFor="isBackordered" className="ml-2 text-sm text-slate-700">
+                  Mark as backordered (supplier cannot fulfill immediately)
+                </label>
+              </div>
+
+              {orderData.isBackordered && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Backorder Notes</label>
+                  <textarea
+                    value={orderData.backorderNotes}
+                    onChange={(e) => setOrderData({ ...orderData, backorderNotes: e.target.value })}
+                    rows={3}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                    placeholder="Explain why this is backordered, expected timeline, etc."
+                  />
+                </div>
+              )}
+
+              {orderData.isReturnReplacement && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Return/Exchange Notes</label>
+                  <textarea
+                    value={orderData.returnNotes}
+                    onChange={(e) => setOrderData({ ...orderData, returnNotes: e.target.value })}
+                    rows={3}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                    placeholder="Reason for return/exchange, damage details, etc."
+                  />
+                </div>
+              )}
+
+              {/* Supplier Instructions */}
+              {showOrderModal.supplier_instructions && (
+                <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
+                  <h4 className="font-medium text-sky-900 mb-2">Supplier Instructions:</h4>
+                  <p className="text-sm text-sky-800">{showOrderModal.supplier_instructions}</p>
+                </div>
+              )}
             </div>
 
             <div className="flex space-x-3 mt-6">
               <button
                 onClick={handlePlaceOrder}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg"
+                className="flex-1 bg-sky-600 hover:bg-sky-700 text-white py-2 px-4 rounded-lg"
               >
-                Sell & Order Replacement
+                {orderData.isReturnReplacement ? 'Order Replacement' : 'Sell & Order Replacement'}
               </button>
               <button
                 onClick={() => setShowOrderModal(null)}
@@ -689,10 +939,10 @@ export default function CasketsPage() {
         </div>
       )}
 
-      {/* Return Modal */}
+      {/* Enhanced Return Modal */}
       {showReturnModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-semibold mb-4">Record Return: {showReturnModal.name}</h3>
 
             <div className="space-y-4">
@@ -732,6 +982,63 @@ export default function CasketsPage() {
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
                 />
               </div>
+
+              <div className="border-t pt-4">
+                <div className="flex items-center mb-4">
+                  <input
+                    type="checkbox"
+                    id="expectsReplacement"
+                    checked={returnData.expectsReplacement}
+                    onChange={(e) => setReturnData({ ...returnData, expectsReplacement: e.target.checked })}
+                    className="rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                  />
+                  <label htmlFor="expectsReplacement" className="ml-2 text-sm font-medium text-slate-700">
+                    Expecting a replacement casket
+                  </label>
+                </div>
+
+                {returnData.expectsReplacement && (
+                  <div className="space-y-3 bg-sky-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-sky-900">Replacement Order Details</h4>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Replacement PO Number *</label>
+                      <input
+                        type="text"
+                        value={returnData.replacementPoNumber}
+                        onChange={(e) => setReturnData({ ...returnData, replacementPoNumber: e.target.value })}
+                        className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                        placeholder="Enter PO number for replacement"
+                      />
+                    </div>
+
+                    <div className="flex items-center mb-2">
+                      <input
+                        type="checkbox"
+                        id="replacementExpectedDateTbd"
+                        checked={returnData.replacementExpectedDateTbd}
+                        onChange={(e) => setReturnData({ ...returnData, replacementExpectedDateTbd: e.target.checked })}
+                        className="rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                      />
+                      <label htmlFor="replacementExpectedDateTbd" className="ml-2 text-sm text-slate-700">
+                        Expected delivery date is TBD
+                      </label>
+                    </div>
+
+                    {!returnData.replacementExpectedDateTbd && (
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Expected Delivery Date</label>
+                        <input
+                          type="date"
+                          value={returnData.replacementExpectedDate}
+                          onChange={(e) => setReturnData({ ...returnData, replacementExpectedDate: e.target.value })}
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex space-x-3 mt-6">
@@ -754,7 +1061,7 @@ export default function CasketsPage() {
 
       {/* Inventory Adjustment Modal */}
       {showAdjustModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
             <h3 className="text-xl font-semibold mb-4">Adjust Inventory: {showAdjustModal.name}</h3>
 
@@ -827,7 +1134,7 @@ export default function CasketsPage() {
             <div className="flex space-x-3 mt-6">
               <button
                 onClick={handleAdjustment}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg"
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded-lg"
               >
                 Apply Adjustment
               </button>
@@ -842,9 +1149,114 @@ export default function CasketsPage() {
         </div>
       )}
 
+      {/* History Modal */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-xl font-semibold mb-4">History: {showHistoryModal.name}</h3>
+
+            <div className="space-y-3">
+              {casketHistory.length > 0 ? (
+                casketHistory.map((entry) => (
+                  <div key={entry.id} className="border border-slate-200 rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="font-medium text-slate-900">{entry.action}</h4>
+                      <span className="text-sm text-slate-500">
+                        {new Date(entry.performed_at).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-700 mb-1">{entry.details}</p>
+                    <div className="flex justify-between items-center text-xs text-slate-500">
+                      <span>By: {entry.performed_by}</span>
+                      {entry.quantity_change !== 0 && (
+                        <span className={`font-medium ${entry.quantity_change > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {entry.quantity_change > 0 ? '+' : ''}{entry.quantity_change}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-slate-500">
+                  No history records found
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => setShowHistoryModal(null)}
+                className="bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mark Arrival Modal */}
+      {showArrivalModal && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
+            <h3 className="text-xl font-semibold mb-4">Mark Arrival</h3>
+
+            <div className="space-y-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                <h4 className="font-medium text-slate-900 mb-2">Order Details:</h4>
+                <p className="text-sm text-slate-700">PO: {showArrivalModal.po_number}</p>
+                <p className="text-sm text-slate-700">Deceased: {showArrivalModal.deceased_name}</p>
+                <p className="text-sm text-slate-700">Expected: {showArrivalModal.expected_date || 'TBD'}</p>
+                {showArrivalModal.is_return_replacement && (
+                  <span className="inline-block mt-2 px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded">
+                    RETURN/EXCHANGE
+                  </span>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Marked By *</label>
+                <input
+                  type="text"
+                  value={arrivalData.markedBy}
+                  onChange={(e) => setArrivalData({ ...arrivalData, markedBy: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                  placeholder="Enter your name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Arrival Date & Time *</label>
+                <input
+                  type="datetime-local"
+                  value={arrivalData.arrivedAt}
+                  onChange={(e) => setArrivalData({ ...arrivalData, arrivedAt: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                />
+              </div>
+            </div>
+
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={handleArrival}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded-lg"
+              >
+                Mark as Arrived
+              </button>
+              <button
+                onClick={() => setShowArrivalModal(null)}
+                className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Casket Modal */}
       {showAddCasket && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-semibold mb-4">Add New Casket Type</h3>
 
@@ -880,7 +1292,7 @@ export default function CasketsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Target Quantity (How many to keep on hand)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Target Quantity</label>
                 <input
                   type="number"
                   min="0"
@@ -914,6 +1326,28 @@ export default function CasketsPage() {
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Interior Dimensions</label>
+                <input
+                  type="text"
+                  value={newCasket.interior_dimensions}
+                  onChange={(e) => setNewCasket({ ...newCasket, interior_dimensions: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                  placeholder="e.g., 78&quot; L x 24&quot; W x 16&quot; H"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Exterior Dimensions</label>
+                <input
+                  type="text"
+                  value={newCasket.exterior_dimensions}
+                  onChange={(e) => setNewCasket({ ...newCasket, exterior_dimensions: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                  placeholder="e.g., 84&quot; L x 28&quot; W x 18&quot; H"
+                />
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Supplier Ordering Instructions</label>
                 <textarea
                   value={newCasket.supplier_instructions}
@@ -928,7 +1362,7 @@ export default function CasketsPage() {
             <div className="flex space-x-3 mt-6">
               <button
                 onClick={addNewCasket}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg"
+                className="flex-1 bg-sky-600 hover:bg-sky-700 text-white py-2 px-4 rounded-lg"
               >
                 Add Casket
               </button>
@@ -945,7 +1379,7 @@ export default function CasketsPage() {
 
       {/* Edit Casket Modal */}
       {showEditCasket && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-semibold mb-4">Edit Casket: {showEditCasket.name}</h3>
 
@@ -1004,6 +1438,28 @@ export default function CasketsPage() {
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Interior Dimensions</label>
+                <input
+                  type="text"
+                  value={showEditCasket.interior_dimensions || ''}
+                  onChange={(e) => setShowEditCasket({ ...showEditCasket, interior_dimensions: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                  placeholder="e.g., 78&quot; L x 24&quot; W x 16&quot; H"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Exterior Dimensions</label>
+                <input
+                  type="text"
+                  value={showEditCasket.exterior_dimensions || ''}
+                  onChange={(e) => setShowEditCasket({ ...showEditCasket, exterior_dimensions: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                  placeholder="e.g., 84&quot; L x 28&quot; W x 18&quot; H"
+                />
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Supplier Ordering Instructions</label>
                 <textarea
                   value={showEditCasket.supplier_instructions || ''}
@@ -1017,77 +1473,12 @@ export default function CasketsPage() {
             <div className="flex space-x-3 mt-6">
               <button
                 onClick={updateCasket}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg"
+                className="flex-1 bg-sky-600 hover:bg-sky-700 text-white py-2 px-4 rounded-lg"
               >
                 Update Casket
               </button>
               <button
                 onClick={() => setShowEditCasket(null)}
-                className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Backorder Modal */}
-      {showBackorderModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
-            <h3 className="text-xl font-semibold mb-4">Record Backorder: {showBackorderModal.name}</h3>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Quantity to Backorder *</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={backorderData.quantity}
-                  onChange={(e) => setBackorderData({ ...backorderData, quantity: parseInt(e.target.value) })}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Reason *</label>
-                <select
-                  value={backorderData.reason}
-                  onChange={(e) => setBackorderData({ ...backorderData, reason: e.target.value })}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
-                >
-                  <option value="">Select reason</option>
-                  <option value="Supplier out of stock">Supplier out of stock</option>
-                  <option value="Manufacturing delay">Manufacturing delay</option>
-                  <option value="Shipping issues">Shipping issues</option>
-                  <option value="Quality control hold">Quality control hold</option>
-                  <option value="Discontinued model">Discontinued model</option>
-                  <option value="Seasonal unavailability">Seasonal unavailability</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
-                <textarea
-                  value={backorderData.notes}
-                  onChange={(e) => setBackorderData({ ...backorderData, notes: e.target.value })}
-                  rows={3}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
-                  placeholder="Additional details about the backorder..."
-                />
-              </div>
-            </div>
-
-            <div className="flex space-x-3 mt-6">
-              <button
-                onClick={handleBackorder}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg"
-              >
-                Record Backorder
-              </button>
-              <button
-                onClick={() => setShowBackorderModal(null)}
                 className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
               >
                 Cancel
