@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Package, Flame, Users, ShoppingCart, Plus, AlertTriangle, Search, TrendingUp, Calendar, Clock, ExternalLink, Eye } from 'lucide-react'
+import { Package, Flame, Users, ShoppingCart, Plus, AlertTriangle, Search, TrendingUp, Calendar, ExternalLink, Eye } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 interface InventoryStats {
@@ -59,7 +59,6 @@ export default function Dashboard() {
   const [showOrderModal, setShowOrderModal] = useState(false)
   const [showSpecialOrderModal, setShowSpecialOrderModal] = useState(false)
   const [showOrderDetail, setShowOrderDetail] = useState<Order | null>(null)
-  const [orderType, setOrderType] = useState<'casket' | 'urn'>('casket')
   
   // Form states
   const [orderData, setOrderData] = useState({
@@ -103,8 +102,8 @@ export default function Dashboard() {
       const urnsLowStock = 0
 
       // Get suppliers count
-      const { data: suppliers } = await supabase.from('suppliers_list').select('id')
-      const suppliersCount = suppliers?.length || 0
+      const { data: suppliersdata } = await supabase.from('suppliers_list').select('id')
+      const suppliersCount = suppliersdata?.length || 0
 
       // Get regular orders
       const { data: casketOrders } = await supabase

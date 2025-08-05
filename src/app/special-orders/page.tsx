@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Plus, Calendar, AlertTriangle, CheckCircle, Clock } from 'lucide-react'
+import { ArrowLeft, Plus, Calendar } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 interface Casket {
