@@ -1,14 +1,42 @@
+// ArrivalModal.tsx — Cleaned and Type-Safe
 'use client'
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
+interface Casket {
+  id: number
+  name: string
+  on_hand: number
+  on_order: number
+  target_quantity: number
+  backordered_quantity: number
+  updated_at: string
+  supplier?: string
+}
+
+interface Order {
+  id: number
+  type: 'casket' | 'urn' | 'special'
+  name: string
+  supplier?: string
+  family_name?: string
+  deceased_name?: string
+  expected_date: string
+  service_date?: string
+  urgency: 'on-time' | 'urgent' | 'late'
+  days_remaining: number
+  po_number?: string
+  casket_id?: number
+  quantity?: number
+}
+
 interface Props {
   isOpen: boolean
   onClose: () => void
-  order: any
+  order: Order
   onSuccess: () => void
-  caskets: any[]
+  caskets: Casket[]
 }
 
 export default function ArrivalModal({ isOpen, onClose, order, onSuccess, caskets }: Props) {
@@ -36,13 +64,15 @@ export default function ArrivalModal({ isOpen, onClose, order, onSuccess, casket
         arrived_marked_at: iso
       }).eq('id', order.id)
 
-      const related = caskets.find(c => c.id === order.casket_id)
-      if (related) {
-        await supabase.from('caskets').update({
-          on_hand: related.on_hand + order.quantity,
-          on_order: Math.max(0, related.on_order - order.quantity),
-          updated_at: iso
-        }).eq('id', order.casket_id)
+      if (order.casket_id && order.quantity) {
+        const related = caskets.find(c => c.id === order.casket_id)
+        if (related) {
+          await supabase.from('caskets').update({
+            on_hand: related.on_hand + order.quantity,
+            on_order: Math.max(0, related.on_order - order.quantity),
+            updated_at: iso
+          }).eq('id', order.casket_id)
+        }
       }
 
       onClose()

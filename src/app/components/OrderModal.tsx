@@ -1,21 +1,31 @@
+// OrderModal.tsx — Cleaned and Type-Safe
 'use client'
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
+import { useState } from 'react'
 
 interface OrderModalProps {
   isOpen: boolean
   onClose: () => void
   itemType: 'casket' | 'urn'
-  preselectedItem?: any
+  preselectedItem?: {
+    id: number
+    name: string
+    supplier?: string
+  }
   onSuccess: () => void
 }
 
 export default function OrderModal({ isOpen, onClose, itemType, onSuccess }: OrderModalProps) {
+  const [poNumber, setPoNumber] = useState('')
+  const [deceasedName, setDeceasedName] = useState('')
+
   if (!isOpen) return null
 
   const handleSubmit = () => {
+    // Placeholder: Insert order into supabase here
     onSuccess()
     onClose()
-    alert('Order processed successfully!')
+    alert(`Order for ${itemType} placed successfully!`)
   }
 
   return (
@@ -24,12 +34,14 @@ export default function OrderModal({ isOpen, onClose, itemType, onSuccess }: Ord
         <h3 className="text-xl font-semibold mb-4">
           Order {itemType.charAt(0).toUpperCase() + itemType.slice(1)}
         </h3>
-        
+
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">PO Number *</label>
             <input
               type="text"
+              value={poNumber}
+              onChange={(e) => setPoNumber(e.target.value)}
               className="w-full border border-slate-300 rounded-lg px-3 py-2"
               placeholder="Enter purchase order number"
             />
@@ -39,6 +51,8 @@ export default function OrderModal({ isOpen, onClose, itemType, onSuccess }: Ord
             <label className="block text-sm font-medium text-slate-700 mb-1">Deceased Name *</label>
             <input
               type="text"
+              value={deceasedName}
+              onChange={(e) => setDeceasedName(e.target.value)}
               className="w-full border border-slate-300 rounded-lg px-3 py-2"
               placeholder="Enter name of deceased"
             />
