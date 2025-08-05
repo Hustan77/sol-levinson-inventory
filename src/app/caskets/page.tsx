@@ -1,5 +1,5 @@
 'use client'
-/* eslint-disable @typescript-eslint/no-unused-vars, prefer-const */
+/* eslint-disable prefer-const, @typescript-eslint/no-explicit-any */
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
@@ -228,7 +228,7 @@ export default function CasketsPage() {
       if (orderError) throw orderError
 
       // Update casket inventory
-      let updateData: any = { updated_at: new Date().toISOString() }
+      let updateData: Record<string, any> = { updated_at: new Date().toISOString() }
 
       if (!orderData.isReturnReplacement) {
         // Regular sale - deduct from on_hand
