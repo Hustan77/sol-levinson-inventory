@@ -5,31 +5,6 @@ import Link from 'next/link'
 import { ArrowLeft, Plus, Calendar } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
-interface Casket {
-  id: number
-  name: string
-  model: string | null
-  supplier: string
-  target_quantity: number
-  on_hand: number
-  on_order: number
-  backordered: number
-  location: string
-  supplier_instructions: string | null
-  status: 'normal' | 'low_stock' | 'critical' | 'backorder'
-}
-
-interface CasketOrder {
-  id: number
-  casket_id: number
-  order_type: string
-  quantity: number
-  status: string
-  order_date: string
-  expected_date: string | null
-  deceased_name: string | null
-}
-
 interface SpecialOrder {
   id: number
   casket_name: string

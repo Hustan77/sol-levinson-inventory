@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
@@ -48,25 +49,25 @@ export default function Dashboard() {
     orders: { pending: 0, total: 0 },
     specialOrders: { urgent: 0, total: 0 }
   })
-  
+
   const [allOrders, setAllOrders] = useState<Order[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [caskets, setCaskets] = useState<Casket[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  
+
   // Modal states
   const [showOrderModal, setShowOrderModal] = useState(false)
   const [showSpecialOrderModal, setShowSpecialOrderModal] = useState(false)
   const [showOrderDetail, setShowOrderDetail] = useState<Order | null>(null)
-  
+
   // Form states
   const [orderData, setOrderData] = useState({
     casket_id: '',
     deceased_name: '',
     expected_date: ''
   })
-  
+
   const [specialOrderData, setSpecialOrderData] = useState({
     casket_name: '',
     model: '',
@@ -90,9 +91,9 @@ export default function Dashboard() {
       const { data: caskets } = await supabase
         .from('caskets')
         .select('on_hand, target_quantity, backordered_quantity')
-      
+
       const casketsTotal = caskets?.reduce((sum, item) => sum + item.on_hand, 0) || 0
-      const casketsLowStock = caskets?.filter(item => 
+      const casketsLowStock = caskets?.filter(item =>
         (item.on_hand + (item.backordered_quantity || 0)) < item.target_quantity
       ).length || 0
       const casketsBackordered = caskets?.reduce((sum, item) => sum + (item.backordered_quantity || 0), 0) || 0
@@ -113,7 +114,7 @@ export default function Dashboard() {
           caskets(name)
         `)
         .neq('status', 'arrived')
-      
+
       // Get special orders
       const { data: specialOrders } = await supabase
         .from('special_orders')
@@ -127,7 +128,7 @@ export default function Dashboard() {
       casketOrders?.forEach((order: any) => {
         const daysRemaining = Math.ceil((new Date(order.expected_date).getTime() - new Date().getTime()) / (1000 * 3600 * 24))
         let urgency: 'on-time' | 'urgent' | 'late' = 'on-time'
-        
+
         if (daysRemaining < 0) urgency = 'late'
         else if (daysRemaining <= 3) urgency = 'urgent'
 
@@ -144,10 +145,10 @@ export default function Dashboard() {
       })
 
       // Process special orders
-      specialOrders?.forEach(order => {
+      specialOrders?.forEach((order: any) => {
         const daysRemaining = Math.ceil((new Date(order.service_date).getTime() - new Date().getTime()) / (1000 * 3600 * 24))
         let urgency: 'on-time' | 'urgent' | 'late' = 'on-time'
-        
+
         if (daysRemaining < 0) urgency = 'late'
         else if (daysRemaining <= 7) urgency = 'urgent'
 
@@ -174,7 +175,7 @@ export default function Dashboard() {
       })
 
       setAllOrders(combinedOrders)
-      
+
       const ordersTotal = casketOrders?.length || 0
       const ordersPending = casketOrders?.filter(order => order.status === 'pending').length || 0
       const specialOrdersTotal = specialOrders?.length || 0
@@ -203,7 +204,7 @@ export default function Dashboard() {
         .from('suppliers_list')
         .select('*')
         .order('name')
-      
+
       setSuppliers(data || [])
     } catch (error) {
       console.error('Error loading suppliers:', error)
@@ -217,7 +218,7 @@ export default function Dashboard() {
         .select('id, name, supplier, supplier_instructions, on_hand')
         .gt('on_hand', 0)
         .order('name')
-      
+
       setCaskets(data || [])
     } catch (error) {
       console.error('Error loading caskets:', error)
@@ -234,7 +235,7 @@ export default function Dashboard() {
       const selectedCasket = caskets.find(c => c.id === parseInt(orderData.casket_id))
       if (!selectedCasket) return
 
-      const expectedDelivery = orderData.expected_date || 
+      const expectedDelivery = orderData.expected_date ||
         new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
       // Create order
@@ -350,7 +351,7 @@ export default function Dashboard() {
               <h1 className="text-4xl font-bold text-slate-900">Sol Levinson</h1>
               <p className="text-slate-600 text-lg">Inventory Management System</p>
             </div>
-            
+
             {/* Global Search */}
             <div className="relative w-96">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-5 w-5" />
@@ -367,7 +368,7 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
+
         {/* Alert Section */}
         {(stats.caskets.lowStock > 0 || stats.caskets.backordered > 0) && (
           <div className="space-y-4 mb-8">
@@ -383,7 +384,7 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
-            
+
             {stats.caskets.lowStock > 0 && (
               <div className="bg-amber-50 border-l-4 border-amber-400 p-4">
                 <div className="flex">
@@ -408,7 +409,7 @@ export default function Dashboard() {
             <Plus className="h-5 w-5" />
             <span>Place Casket Order</span>
           </button>
-          
+
           <button
             onClick={() => setShowSpecialOrderModal(true)}
             className="bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-lg flex items-center justify-center space-x-2"
@@ -416,8 +417,8 @@ export default function Dashboard() {
             <Calendar className="h-5 w-5" />
             <span>Create Special Order</span>
           </button>
-          
-          <Link 
+
+          <Link
             href="/caskets"
             className="bg-green-600 hover:bg-green-700 text-white p-4 rounded-lg flex items-center justify-center space-x-2"
           >
@@ -428,7 +429,7 @@ export default function Dashboard() {
 
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          
+
           {/* Caskets Stats */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <div className="flex items-center justify-between">
@@ -498,18 +499,18 @@ export default function Dashboard() {
 
         {/* Orders Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          
+
           {/* Active Orders */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-slate-900">Active Orders ({allOrders.length})</h3>
               <Link href="/orders" className="text-sm text-blue-600 hover:text-blue-800">View All</Link>
             </div>
-            
+
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {allOrders.slice(0, 10).map((order) => (
-                <div 
-                  key={`${order.type}-${order.id}`} 
+                <div
+                  key={`${order.type}-${order.id}`}
                   className={`border-l-4 p-4 rounded-r cursor-pointer hover:shadow-md transition-shadow ${getUrgencyColor(order.urgency)}`}
                   onClick={() => setShowOrderDetail(order)}
                 >
@@ -519,13 +520,12 @@ export default function Dashboard() {
                         <span className={`px-2 py-1 rounded text-xs font-medium ${getOrderTypeColor(order.type)}`}>
                           {order.type.toUpperCase()}
                         </span>
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          order.urgency === 'late' ? 'bg-red-100 text-red-800' :
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${order.urgency === 'late' ? 'bg-red-100 text-red-800' :
                           order.urgency === 'urgent' ? 'bg-amber-100 text-amber-800' :
-                          'bg-green-100 text-green-800'
-                        }`}>
-                          {order.urgency === 'late' ? 'LATE' : 
-                           order.urgency === 'urgent' ? 'URGENT' : 'ON TIME'}
+                            'bg-green-100 text-green-800'
+                          }`}>
+                          {order.urgency === 'late' ? 'LATE' :
+                            order.urgency === 'urgent' ? 'URGENT' : 'ON TIME'}
                         </span>
                       </div>
                       <p className="font-medium text-slate-900">{order.name}</p>
@@ -538,7 +538,7 @@ export default function Dashboard() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-medium text-slate-900">
-                        {order.days_remaining < 0 ? 
+                        {order.days_remaining < 0 ?
                           `${Math.abs(order.days_remaining)} days overdue` :
                           `${order.days_remaining} days left`
                         }
@@ -548,7 +548,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               ))}
-              
+
               {allOrders.length === 0 && (
                 <div className="text-center py-8 text-slate-500">
                   No active orders
@@ -559,7 +559,7 @@ export default function Dashboard() {
 
           {/* Management Cards */}
           <div className="space-y-6">
-            
+
             {/* Caskets Management */}
             <Link href="/caskets" className="block group">
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg transition-all duration-200 p-6">
@@ -634,13 +634,13 @@ export default function Dashboard() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
             <h3 className="text-xl font-semibold mb-4">Place Casket Order</h3>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Select Casket *</label>
                 <select
                   value={orderData.casket_id}
-                  onChange={(e) => setOrderData({...orderData, casket_id: e.target.value})}
+                  onChange={(e) => setOrderData({ ...orderData, casket_id: e.target.value })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
                 >
                   <option value="">Choose a casket</option>
@@ -651,7 +651,7 @@ export default function Dashboard() {
                   ))}
                 </select>
               </div>
-              
+
               {orderData.casket_id && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <h4 className="font-medium text-blue-900 text-sm mb-1">Supplier Instructions:</h4>
@@ -660,255 +660,253 @@ export default function Dashboard() {
                   </p>
                 </div>
               )}
-              
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Deceased Name *</label>
                 <input
                   type="text"
                   value={orderData.deceased_name}
-                  onChange={(e) => setOrderData({...orderData, deceased_name: e.target.value})}
+                  onChange={(e) => setOrderData({ ...orderData, deceased_name: e.target.value })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Expected Delivery Date</label>
                 <input
                   type="date"
                   value={orderData.expected_date}
-                  onChange={(e) => setOrderData({...orderData, expected_date: e.target.value})}
+                  onChange={(e) => setOrderData({ ...orderData, expected_date: e.target.value })}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
-               />
-             </div>
-           </div>
+                />
+              </div>
+            </div>
 
-           <div className="flex space-x-3 mt-6">
-             <button
-               onClick={handleRegularOrder}
-               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg"
-             >
-               Place Order
-             </button>
-             <button
-               onClick={() => setShowOrderModal(false)}
-               className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
-             >
-               Cancel
-             </button>
-           </div>
-         </div>
-       </div>
-     )}
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={handleRegularOrder}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg"
+              >
+                Place Order
+              </button>
+              <button
+                onClick={() => setShowOrderModal(false)}
+                className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-     {/* Special Order Modal */}
-     {showSpecialOrderModal && (
-       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-         <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
-           <h3 className="text-xl font-semibold mb-4">Create Special Order</h3>
-           
-           <div className="space-y-4">
-             <div>
-               <label className="block text-sm font-medium text-slate-700 mb-1">Casket Name *</label>
-               <input
-                 type="text"
-                 value={specialOrderData.casket_name}
-                 onChange={(e) => setSpecialOrderData({...specialOrderData, casket_name: e.target.value})}
-                 className="w-full border border-slate-300 rounded-lg px-3 py-2"
-                 placeholder="e.g., Mahogany Deluxe Premium"
-               />
-             </div>
-             
-             <div>
-               <label className="block text-sm font-medium text-slate-700 mb-1">Model</label>
-               <input
-                 type="text"
-                 value={specialOrderData.model}
-                 onChange={(e) => setSpecialOrderData({...specialOrderData, model: e.target.value})}
-                 className="w-full border border-slate-300 rounded-lg px-3 py-2"
-                 placeholder="e.g., MD-500"
-               />
-             </div>
-             
-             <div>
-               <label className="block text-sm font-medium text-slate-700 mb-1">Supplier</label>
-               <select
-                 value={specialOrderData.supplier_id}
-                 onChange={(e) => setSpecialOrderData({...specialOrderData, supplier_id: e.target.value, custom_supplier: ''})}
-                 className="w-full border border-slate-300 rounded-lg px-3 py-2 mb-2"
-               >
-                 <option value="">Select existing supplier</option>
-                 {suppliers.map(supplier => (
-                   <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
-                 ))}
-                 <option value="custom">Other (type below)</option>
-               </select>
-               
-               {specialOrderData.supplier_id === 'custom' && (
-                 <input
-                   type="text"
-                   value={specialOrderData.custom_supplier}
-                   onChange={(e) => setSpecialOrderData({...specialOrderData, custom_supplier: e.target.value})}
-                   className="w-full border border-slate-300 rounded-lg px-3 py-2"
-                   placeholder="Enter custom supplier name"
-                 />
-               )}
-               
-               {specialOrderData.supplier_id && specialOrderData.supplier_id !== 'custom' && (
-                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
-                   <h4 className="font-medium text-blue-900 text-sm mb-1">Ordering Instructions:</h4>
-                   <p className="text-sm text-blue-800">
-                     {suppliers.find(s => s.id === parseInt(specialOrderData.supplier_id))?.ordering_instructions}
-                   </p>
-                 </div>
-               )}
-             </div>
-             
-             <div>
-               <label className="block text-sm font-medium text-slate-700 mb-1">Family Name *</label>
-               <input
-                 type="text"
-                 value={specialOrderData.family_name}
-                 onChange={(e) => setSpecialOrderData({...specialOrderData, family_name: e.target.value})}
-                 className="w-full border border-slate-300 rounded-lg px-3 py-2"
-               />
-             </div>
-             
-             <div>
-               <label className="block text-sm font-medium text-slate-700 mb-1">Service Date *</label>
-               <input
-                 type="date"
-                 value={specialOrderData.service_date}
-                 onChange={(e) => setSpecialOrderData({...specialOrderData, service_date: e.target.value})}
-                 className="w-full border border-slate-300 rounded-lg px-3 py-2"
-               />
-             </div>
-             
-             <div>
-               <label className="block text-sm font-medium text-slate-700 mb-1">Expected Delivery</label>
-               <input
-                 type="date"
-                 value={specialOrderData.expected_delivery}
-                 onChange={(e) => setSpecialOrderData({...specialOrderData, expected_delivery: e.target.value})}
-                 className="w-full border border-slate-300 rounded-lg px-3 py-2"
-               />
-             </div>
-             
-             <div>
-               <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
-               <textarea
-                 value={specialOrderData.notes}
-                 onChange={(e) => setSpecialOrderData({...specialOrderData, notes: e.target.value})}
-                 rows={3}
-                 className="w-full border border-slate-300 rounded-lg px-3 py-2"
-                 placeholder="Special requirements, color preferences, etc."
-               />
-             </div>
-           </div>
+      {/* Special Order Modal */}
+      {showSpecialOrderModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-semibold mb-4">Create Special Order</h3>
 
-           <div className="flex space-x-3 mt-6">
-             <button
-               onClick={handleSpecialOrder}
-               className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg"
-             >
-               Create Special Order
-             </button>
-             <button
-               onClick={() => setShowSpecialOrderModal(false)}
-               className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
-             >
-               Cancel
-             </button>
-           </div>
-         </div>
-       </div>
-     )}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Casket Name *</label>
+                <input
+                  type="text"
+                  value={specialOrderData.casket_name}
+                  onChange={(e) => setSpecialOrderData({ ...specialOrderData, casket_name: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                  placeholder="e.g., Mahogany Deluxe Premium"
+                />
+              </div>
 
-     {/* Order Detail Modal */}
-     {showOrderDetail && (
-       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-         <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
-           <h3 className="text-xl font-semibold mb-4">Order Details</h3>
-           
-           <div className="space-y-4">
-             <div className="flex items-center space-x-2">
-               <span className={`px-3 py-1 rounded text-sm font-medium ${getOrderTypeColor(showOrderDetail.type)}`}>
-                 {showOrderDetail.type.toUpperCase()}
-               </span>
-               <span className={`px-3 py-1 rounded text-sm font-medium ${
-                 showOrderDetail.urgency === 'late' ? 'bg-red-100 text-red-800' :
-                 showOrderDetail.urgency === 'urgent' ? 'bg-amber-100 text-amber-800' :
-                 'bg-green-100 text-green-800'
-               }`}>
-                 {showOrderDetail.urgency === 'late' ? 'LATE' : 
-                  showOrderDetail.urgency === 'urgent' ? 'URGENT' : 'ON TIME'}
-               </span>
-             </div>
-             
-             <div>
-               <p className="text-sm text-slate-600">Item</p>
-               <p className="font-medium text-slate-900">{showOrderDetail.name}</p>
-             </div>
-             
-             {showOrderDetail.family_name && (
-               <div>
-                 <p className="text-sm text-slate-600">Family</p>
-                 <p className="font-medium text-slate-900">{showOrderDetail.family_name}</p>
-               </div>
-             )}
-             
-             {showOrderDetail.deceased_name && (
-               <div>
-                 <p className="text-sm text-slate-600">Deceased</p>
-                 <p className="font-medium text-slate-900">{showOrderDetail.deceased_name}</p>
-               </div>
-             )}
-             
-             <div>
-               <p className="text-sm text-slate-600">
-                 {showOrderDetail.service_date ? 'Service Date' : 'Expected Delivery'}
-               </p>
-               <p className="font-medium text-slate-900">
-                 {showOrderDetail.service_date || showOrderDetail.expected_date}
-               </p>
-             </div>
-             
-             <div>
-               <p className="text-sm text-slate-600">Status</p>
-               <p className="font-medium text-slate-900 capitalize">{showOrderDetail.status}</p>
-             </div>
-             
-             <div>
-               <p className="text-sm text-slate-600">Time Remaining</p>
-               <p className={`font-medium ${
-                 showOrderDetail.days_remaining < 0 ? 'text-red-600' :
-                 showOrderDetail.days_remaining <= 3 ? 'text-amber-600' :
-                 'text-green-600'
-               }`}>
-                 {showOrderDetail.days_remaining < 0 ? 
-                   `${Math.abs(showOrderDetail.days_remaining)} days overdue` :
-                   `${showOrderDetail.days_remaining} days remaining`
-                 }
-               </p>
-             </div>
-           </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Model</label>
+                <input
+                  type="text"
+                  value={specialOrderData.model}
+                  onChange={(e) => setSpecialOrderData({ ...specialOrderData, model: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                  placeholder="e.g., MD-500"
+                />
+              </div>
 
-           <div className="flex space-x-3 mt-6">
-             <Link
-               href={showOrderDetail.type === 'special' ? '/special-orders' : '/orders'}
-               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg text-center"
-             >
-               View Full Details
-             </Link>
-             <button
-               onClick={() => setShowOrderDetail(null)}
-               className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
-             >
-               Close
-             </button>
-           </div>
-         </div>
-       </div>
-     )}
-   </div>
- )
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Supplier</label>
+                <select
+                  value={specialOrderData.supplier_id}
+                  onChange={(e) => setSpecialOrderData({ ...specialOrderData, supplier_id: e.target.value, custom_supplier: '' })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 mb-2"
+                >
+                  <option value="">Select existing supplier</option>
+                  {suppliers.map(supplier => (
+                    <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+                  ))}
+                  <option value="custom">Other (type below)</option>
+                </select>
+
+                {specialOrderData.supplier_id === 'custom' && (
+                  <input
+                    type="text"
+                    value={specialOrderData.custom_supplier}
+                    onChange={(e) => setSpecialOrderData({ ...specialOrderData, custom_supplier: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                    placeholder="Enter custom supplier name"
+                  />
+                )}
+
+                {specialOrderData.supplier_id && specialOrderData.supplier_id !== 'custom' && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
+                    <h4 className="font-medium text-blue-900 text-sm mb-1">Ordering Instructions:</h4>
+                    <p className="text-sm text-blue-800">
+                      {suppliers.find(s => s.id === parseInt(specialOrderData.supplier_id))?.ordering_instructions}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Family Name *</label>
+                <input
+                  type="text"
+                  value={specialOrderData.family_name}
+                  onChange={(e) => setSpecialOrderData({ ...specialOrderData, family_name: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Service Date *</label>
+                <input
+                  type="date"
+                  value={specialOrderData.service_date}
+                  onChange={(e) => setSpecialOrderData({ ...specialOrderData, service_date: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Expected Delivery</label>
+                <input
+                  type="date"
+                  value={specialOrderData.expected_delivery}
+                  onChange={(e) => setSpecialOrderData({ ...specialOrderData, expected_delivery: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+                <textarea
+                  value={specialOrderData.notes}
+                  onChange={(e) => setSpecialOrderData({ ...specialOrderData, notes: e.target.value })}
+                  rows={3}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                  placeholder="Special requirements, color preferences, etc."
+                />
+              </div>
+            </div>
+
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={handleSpecialOrder}
+                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg"
+              >
+                Create Special Order
+              </button>
+              <button
+                onClick={() => setShowSpecialOrderModal(false)}
+                className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Order Detail Modal */}
+      {showOrderDetail && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
+            <h3 className="text-xl font-semibold mb-4">Order Details</h3>
+
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <span className={`px-3 py-1 rounded text-sm font-medium ${getOrderTypeColor(showOrderDetail.type)}`}>
+                  {showOrderDetail.type.toUpperCase()}
+                </span>
+                <span className={`px-3 py-1 rounded text-sm font-medium ${showOrderDetail.urgency === 'late' ? 'bg-red-100 text-red-800' :
+                  showOrderDetail.urgency === 'urgent' ? 'bg-amber-100 text-amber-800' :
+                    'bg-green-100 text-green-800'
+                  }`}>
+                  {showOrderDetail.urgency === 'late' ? 'LATE' :
+                    showOrderDetail.urgency === 'urgent' ? 'URGENT' : 'ON TIME'}
+                </span>
+              </div>
+
+              <div>
+                <p className="text-sm text-slate-600">Item</p>
+                <p className="font-medium text-slate-900">{showOrderDetail.name}</p>
+              </div>
+
+              {showOrderDetail.family_name && (
+                <div>
+                  <p className="text-sm text-slate-600">Family</p>
+                  <p className="font-medium text-slate-900">{showOrderDetail.family_name}</p>
+                </div>
+              )}
+
+              {showOrderDetail.deceased_name && (
+                <div>
+                  <p className="text-sm text-slate-600">Deceased</p>
+                  <p className="font-medium text-slate-900">{showOrderDetail.deceased_name}</p>
+                </div>
+              )}
+
+              <div>
+                <p className="text-sm text-slate-600">
+                  {showOrderDetail.service_date ? 'Service Date' : 'Expected Delivery'}
+                </p>
+                <p className="font-medium text-slate-900">
+                  {showOrderDetail.service_date || showOrderDetail.expected_date}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm text-slate-600">Status</p>
+                <p className="font-medium text-slate-900 capitalize">{showOrderDetail.status}</p>
+              </div>
+
+              <div>
+                <p className="text-sm text-slate-600">Time Remaining</p>
+                <p className={`font-medium ${showOrderDetail.days_remaining < 0 ? 'text-red-600' :
+                  showOrderDetail.days_remaining <= 3 ? 'text-amber-600' :
+                    'text-green-600'
+                  }`}>
+                  {showOrderDetail.days_remaining < 0 ?
+                    `${Math.abs(showOrderDetail.days_remaining)} days overdue` :
+                    `${showOrderDetail.days_remaining} days remaining`
+                  }
+                </p>
+              </div>
+            </div>
+
+            <div className="flex space-x-3 mt-6">
+              <Link
+                href={showOrderDetail.type === 'special' ? '/special-orders' : '/orders'}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg text-center"
+              >
+                View Full Details
+              </Link>
+              <button
+                onClick={() => setShowOrderDetail(null)}
+                className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 py-2 px-4 rounded-lg"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
