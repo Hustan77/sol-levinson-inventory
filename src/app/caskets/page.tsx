@@ -602,7 +602,7 @@ export default function CasketsPage() {
                     Sell & Order Replacement
                   </button>
 
-                  <div className="grid grid-cols-4 gap-1">
+                  <div className="grid grid-cols-3 gap-1">
                     <button
                       onClick={() => setShowReturnModal(casket)}
                       className="bg-orange-600 hover:bg-orange-700 text-white py-2 px-1 rounded text-xs flex items-center justify-center"
@@ -616,12 +616,6 @@ export default function CasketsPage() {
                     >
                       <Settings className="h-3 w-3 mr-1" />
                       Adjust
-                    </button>
-                    <button
-                      onClick={() => setShowBackorderModal(casket)}
-                      className="bg-red-600 hover:bg-red-700 text-white py-2 px-1 rounded text-xs"
-                    >
-                      Backorder
                     </button>
                     <button
                       onClick={() => {/* We'll add history view later */ }}
