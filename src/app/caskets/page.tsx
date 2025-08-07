@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { Pencil, Trash2 } from 'lucide-react'
+import ArrivalModal from '../components/ArrivalModal'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,6 +22,8 @@ interface Casket {
 
 export default function CasketsPage() {
   const [caskets, setCaskets] = useState<Casket[]>([])
+  const [showArrivalModal, setShowArrivalModal] = useState(false)
+  const [selectedCasket, setSelectedCasket] = useState<Casket | null>(null)
 
   useEffect(() => {
     const fetchCaskets = async () => {
@@ -31,13 +34,22 @@ export default function CasketsPage() {
     fetchCaskets()
   }, [])
 
+  const handleCardClick = (casket: Casket) => {
+    setSelectedCasket(casket)
+    setShowArrivalModal(true)
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-900 to-black text-white p-6">
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Casket Inventory</h1>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {caskets.map((casket) => (
-            <div key={casket.id} className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow hover:shadow-lg transition">
+            <div
+              key={casket.id}
+              className="cursor-pointer bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow hover:shadow-lg transition"
+              onClick={() => handleCardClick(casket)}
+            >
               <h2 className="text-xl font-semibold mb-2">{casket.name}</h2>
               <p className="text-sm text-gray-300 mb-1">Supplier: {casket.supplier}</p>
               <p className="text-sm text-gray-300 mb-1">On Hand: {casket.on_hand}</p>
@@ -55,6 +67,15 @@ export default function CasketsPage() {
           ))}
         </div>
       </div>
+
+      {showArrivalModal && selectedCasket && (
+        <ArrivalModal
+          isOpen={showArrivalModal}
+          onClose={() => setShowArrivalModal(false)}
+          casket={selectedCasket}
+          onSuccess={() => window.location.reload()}
+        />
+      )}
     </main>
   )
 }
