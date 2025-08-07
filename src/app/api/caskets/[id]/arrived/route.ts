@@ -1,3 +1,4 @@
+// src/app/api/caskets/[id]/arrived/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
@@ -6,9 +7,9 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, context: { params: { id: string } }) {
   const { arrivalDate } = await req.json()
-  const id = params.id
+  const id = context.params.id
 
   if (!arrivalDate) {
     return NextResponse.json({ error: 'Missing arrivalDate' }, { status: 400 })
