@@ -7,9 +7,11 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-export async function POST(req: NextRequest, context: { params: { id: string } }) {
+export async function POST(req: NextRequest) {
   const { arrivalDate } = await req.json()
-  const id = context.params.id
+
+  // ✅ Extract ID from the URL
+  const id = req.nextUrl.pathname.split('/')[4]
 
   if (!arrivalDate) {
     return NextResponse.json({ error: 'Missing arrivalDate' }, { status: 400 })
