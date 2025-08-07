@@ -110,10 +110,10 @@ export default function Page() {
 
 function Card({ title, value }: { title: string; value: number }) {
   return (
-    <div className="relative bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-md shadow-md transform transition-all duration-300 hover:scale-[1.03] hover:shadow-xl">
-      <div className="absolute inset-0 bg-white/10 rounded-2xl blur-xl opacity-10 animate-pulse pointer-events-none" />
-      <h3 className="text-sm uppercase tracking-wider text-gray-300 z-10 relative">{title}</h3>
+    <div className="group relative bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-md shadow-xl overflow-hidden transform transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl hover:border-white/20">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-white/5 blur-2xl opacity-20 pointer-events-none" />
+      <h3 className="text-xs uppercase tracking-wider text-white/70 z-10 relative">{title}</h3>
       <p className="text-3xl font-extrabold text-white mt-1 z-10 relative">{value}</p>
     </div>
-  )
+  );
 }
