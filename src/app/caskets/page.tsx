@@ -1,8 +1,9 @@
+// src/app/caskets/page.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import ArrivalModal from '../components/ArrivalModal'
+import { Pencil, Trash2 } from 'lucide-react'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,53 +13,48 @@ const supabase = createClient(
 interface Casket {
   id: number
   name: string
-  status: string
-  expected_date: string
+  supplier: string
+  on_hand: number
+  on_order: number
+  target_quantity: number
 }
 
 export default function CasketsPage() {
   const [caskets, setCaskets] = useState<Casket[]>([])
-  const [showArrivalModal, setShowArrivalModal] = useState(false)
-  const [selectedOrder, setSelectedOrder] = useState<Casket | null>(null)
-
-  const loadData = async () => {
-    const { data } = await supabase.from('caskets').select('*')
-    if (data) setCaskets(data)
-  }
 
   useEffect(() => {
-    loadData()
+    const fetchCaskets = async () => {
+      const { data, error } = await supabase.from('caskets').select('*')
+      if (!error && data) setCaskets(data as Casket[])
+    }
+
+    fetchCaskets()
   }, [])
 
   return (
-    <main className="p-6 text-white">
-      <h1 className="text-3xl font-bold mb-4">Caskets</h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {caskets.map((casket) => (
-          <div
-            key={casket.id}
-            className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/10 shadow hover:shadow-lg transition cursor-pointer"
-            onClick={() => {
-              setSelectedOrder(casket)
-              setShowArrivalModal(true)
-            }}
-          >
-            <h3 className="text-lg font-semibold">{casket.name}</h3>
-            <p>Status: {casket.status}</p>
-            <p>Expected: {casket.expected_date}</p>
-          </div>
-        ))}
+    <main className="min-h-screen bg-gradient-to-br from-slate-900 to-black text-white p-6">
+      <div className="max-w-6xl mx-auto">
+        <h1 className="text-3xl font-bold mb-6">Casket Inventory</h1>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {caskets.map((casket) => (
+            <div key={casket.id} className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow hover:shadow-lg transition">
+              <h2 className="text-xl font-semibold mb-2">{casket.name}</h2>
+              <p className="text-sm text-gray-300 mb-1">Supplier: {casket.supplier}</p>
+              <p className="text-sm text-gray-300 mb-1">On Hand: {casket.on_hand}</p>
+              <p className="text-sm text-gray-300 mb-1">On Order: {casket.on_order}</p>
+              <p className="text-sm text-gray-300">Target Qty: {casket.target_quantity}</p>
+              <div className="flex gap-3 mt-3">
+                <button className="text-blue-300 hover:text-blue-400">
+                  <Pencil size={18} />
+                </button>
+                <button className="text-red-300 hover:text-red-400">
+                  <Trash2 size={18} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
-
-      {showArrivalModal && selectedOrder && (
-        <ArrivalModal
-          isOpen={showArrivalModal}
-          onClose={() => setShowArrivalModal(false)}
-          order={selectedOrder}
-          onSuccess={loadData}
-        />
-      )}
     </main>
   )
 }
