@@ -1,47 +1,34 @@
-// ArrivalModal.tsx — Cleaned and Type-Safe
+// ArrivalModal.tsx – Modernized for Casket Arrival with Order Context
 'use client'
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
-interface Casket {
-  id: number
-  name: string
-  on_hand: number
-  on_order: number
-  target_quantity: number
-  backordered_quantity: number
-  updated_at: string
-  supplier?: string
-}
-
-interface Order {
-  id: number
-  type: 'casket' | 'urn' | 'special'
-  name: string
-  supplier?: string
-  family_name?: string
-  deceased_name?: string
-  expected_date: string
-  service_date?: string
-  urgency: 'on-time' | 'urgent' | 'late'
-  days_remaining: number
-  po_number?: string
-  casket_id?: number
-  quantity?: number
-}
-
 interface Props {
   isOpen: boolean
   onClose: () => void
-  order: Order
+  order: {
+    id: number
+    type: 'casket' | 'urn'
+    name: string
+    casket_id: number
+    quantity: number
+    backordered: boolean
+    po_number: string
+  }
   onSuccess: () => void
-  caskets: Casket[]
+  casket: {
+    id: number
+    name: string
+    on_hand: number
+    on_order: number
+    backordered_quantity: number
+  }
 }
 
-export default function ArrivalModal({ isOpen, onClose, order, onSuccess, caskets }: Props) {
+export default function ArrivalModal({ isOpen, onClose, order, casket, onSuccess }: Props) {
   const [markedBy, setMarkedBy] = useState('')
-  const [arrivedAt, setArrivedAt] = useState(new Date().toISOString().slice(0, 16))
+  const [arrivedAt, setArrivedAt] = useState('')
 
   useEffect(() => {
     if (isOpen) {
@@ -50,13 +37,14 @@ export default function ArrivalModal({ isOpen, onClose, order, onSuccess, casket
     }
   }, [isOpen])
 
-  if (!isOpen || !order) return null
+  if (!isOpen || !order || !casket) return null
 
   const handleSubmit = async () => {
     try {
       const iso = new Date(arrivedAt).toISOString()
       const short = iso.split('T')[0]
 
+      // Update order record
       await supabase.from('casket_orders').update({
         status: 'arrived',
         actual_arrival_date: short,
@@ -64,21 +52,24 @@ export default function ArrivalModal({ isOpen, onClose, order, onSuccess, casket
         arrived_marked_at: iso
       }).eq('id', order.id)
 
-      if (order.casket_id && order.quantity) {
-        const related = caskets.find(c => c.id === order.casket_id)
-        if (related) {
-          await supabase.from('caskets').update({
-            on_hand: related.on_hand + order.quantity,
-            on_order: Math.max(0, related.on_order - order.quantity),
-            updated_at: iso
-          }).eq('id', order.casket_id)
-        }
+      // Adjust casket inventory
+      const updated = {
+        on_hand: casket.on_hand + order.quantity,
+        on_order: order.backordered ? casket.on_order : Math.max(0, casket.on_order - order.quantity),
+        backordered_quantity: order.backordered ? Math.max(0, casket.backordered_quantity - order.quantity) : casket.backordered_quantity
       }
+
+      const { error } = await supabase.from('caskets').update({
+        ...updated,
+        updated_at: iso
+      }).eq('id', casket.id)
+
+      if (error) throw error
 
       onClose()
       onSuccess()
     } catch (err) {
-      console.error(err)
+      console.error('Arrival update failed:', err)
       alert('Failed to mark arrival.')
     }
   }
@@ -86,7 +77,11 @@ export default function ArrivalModal({ isOpen, onClose, order, onSuccess, casket
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
       <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-        <h3 className="text-xl font-semibold mb-4">Mark Arrival: {order.deceased_name}</h3>
+        <h3 className="text-xl font-semibold mb-4">Mark Arrival</h3>
+        <div className="mb-2 text-slate-700">
+          <div className="font-medium">{order.name}</div>
+          <div className="text-sm">PO#: {order.po_number}</div>
+        </div>
         <div className="space-y-4">
           <input
             type="text"

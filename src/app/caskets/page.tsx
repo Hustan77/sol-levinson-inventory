@@ -1,186 +1,244 @@
-// CasketsPage.tsx — Cleaned and Lint-Ready for Vercel
+// Caskets Page — Clean and Modern UI with Arrival Flow Integration
 'use client'
 
 import { useState, useEffect } from 'react'
-import ArrivalModal from '../components/ArrivalModal'
-import OrderModal from '../components/OrderModal'
-import {
-  Plus, AlertTriangle, Package, Flame, Calendar, Users, ShoppingCart
-} from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-
-interface Stats {
-  caskets: { total: number; lowStock: number; backordered: number }
-  urns: { total: number; lowStock: number; backordered: number }
-  orders: { total: number; urgent: number }
-  suppliers: number
-}
-
-interface Order {
-  id: number
-  type: 'casket' | 'urn' | 'special'
-  name: string
-  supplier?: string
-  family_name?: string
-  deceased_name?: string
-  expected_date: string
-  service_date?: string
-  urgency: 'on-time' | 'urgent' | 'late'
-  days_remaining: number
-  po_number?: string
-}
-
-interface CasketOrder {
-  id: number
-  quantity: number
-  expected_date: string
-  deceased_name: string
-  status: string
-  po_number?: string
-  caskets: {
-    name: string
-    supplier: string
-  } | null
-}
-
-interface UrnOrder {
-  id: number
-  quantity: number
-  expected_date: string
-  deceased_name: string
-  status: string
-  po_number?: string
-  urns: {
-    name: string
-    supplier: string
-  } | null
-}
-
+import { Pencil, Trash2, Plus, Truck } from 'lucide-react'
+import ArrivalModal from '../components/ArrivalModal'
 
 interface Casket {
   id: number
   name: string
+  supplier: string
   on_hand: number
   on_order: number
   target_quantity: number
   backordered_quantity: number
-  updated_at: string
-  supplier?: string
 }
 
-export default function Dashboard() {
-  const [stats, setStats] = useState<Stats>({
-    caskets: { total: 0, lowStock: 0, backordered: 0 },
-    urns: { total: 0, lowStock: 0, backordered: 0 },
-    orders: { total: 0, urgent: 0 },
-    suppliers: 0
-  })
-  const [orders, setOrders] = useState<Order[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showArrivalModal, setShowArrivalModal] = useState(false)
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+export default function CasketsPage() {
   const [caskets, setCaskets] = useState<Casket[]>([])
-  const [showOrderModal, setShowOrderModal] = useState(false)
-  const [orderType, setOrderType] = useState<'casket' | 'urn'>('casket')
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState({
+    name: '',
+    supplier: '',
+    target_quantity: 1,
+    po_number: '',
+    backorder: false
+  })
+  const [error, setError] = useState('')
+  const [showArrivalModal, setShowArrivalModal] = useState(false)
+  const [selectedCasket, setSelectedCasket] = useState<Casket | null>(null)
 
   useEffect(() => {
-    loadData()
+    loadCaskets()
   }, [])
 
-  const loadData = async () => {
+  const loadCaskets = async () => {
     try {
-      const { data: casketData } = await supabase
-        .from('caskets')
-        .select('id, name, on_hand, on_order, target_quantity, backordered_quantity, updated_at, supplier')
-      setCaskets(casketData || [])
-
-      const casketsTotal = casketData?.reduce((sum, item) => sum + item.on_hand, 0) || 0
-      const casketsLowStock = casketData?.filter(item => (item.on_hand + item.on_order) < item.target_quantity).length || 0
-      const casketsBackordered = casketData?.reduce((sum, item) => sum + (item.backordered_quantity || 0), 0) || 0
-
-      const { data: urnData } = await supabase
-        .from('urns')
-        .select('on_hand, on_order, target_quantity, backordered_quantity')
-
-      const urnsTotal = urnData?.reduce((sum, item) => sum + item.on_hand, 0) || 0
-      const urnsLowStock = urnData?.filter(item => (item.on_hand + item.on_order) < item.target_quantity).length || 0
-      const urnsBackordered = urnData?.reduce((sum, item) => sum + (item.backordered_quantity || 0), 0) || 0
-
-      const { data: suppliersData } = await supabase.from('suppliers_list').select('id')
-      const suppliersCount = suppliersData?.length || 0
-
-      const { data: casketOrders } = await supabase
-        .from('casket_orders')
-        .select(`id, quantity, expected_date, deceased_name, status, po_number, caskets(name, supplier)`)
-        .neq('status', 'arrived') as unknown as { data: CasketOrder[] }
-
-      const { data: urnOrders } = await supabase
-        .from('urn_orders')
-        .select(`id, quantity, expected_date, deceased_name, status, po_number, urns(name, supplier)`)
-        .neq('status', 'arrived') as unknown as { data: UrnOrder[] }
-
-      const { data: specialOrders } = await supabase
-        .from('special_orders')
-        .select('*')
-        .neq('status', 'arrived')
-
-      const allOrders: Order[] = []
-
-      casketOrders?.forEach((order) => {
-        const daysRemaining = Math.ceil((new Date(order.expected_date).getTime() - Date.now()) / 86400000)
-        const urgency = daysRemaining < 0 ? 'late' : daysRemaining <= 3 ? 'urgent' : 'on-time'
-        allOrders.push({ id: order.id, type: 'casket', name: order.caskets?.name || 'Unknown Casket', supplier: order.caskets?.supplier, deceased_name: order.deceased_name, expected_date: order.expected_date, urgency, days_remaining: daysRemaining, po_number: order.po_number })
-      })
-
-      urnOrders?.forEach((order) => {
-        const daysRemaining = Math.ceil((new Date(order.expected_date).getTime() - Date.now()) / 86400000)
-        const urgency = daysRemaining < 0 ? 'late' : daysRemaining <= 3 ? 'urgent' : 'on-time'
-        allOrders.push({ id: order.id, type: 'urn', name: order.urns?.name || 'Unknown Urn', supplier: order.urns?.supplier, deceased_name: order.deceased_name, expected_date: order.expected_date, urgency, days_remaining: daysRemaining, po_number: order.po_number })
-      })
-
-      specialOrders?.forEach((order) => {
-        const daysRemaining = Math.ceil((new Date(order.service_date).getTime() - Date.now()) / 86400000)
-        const urgency = daysRemaining < 0 ? 'late' : daysRemaining <= 7 ? 'urgent' : 'on-time'
-        allOrders.push({ id: order.id, type: 'special', name: order.casket_name, supplier: order.supplier, family_name: order.family_name, expected_date: order.expected_delivery || order.service_date, service_date: order.service_date, urgency, days_remaining: daysRemaining })
-      })
-
-      allOrders.sort((a, b) => {
-        const rank = { late: 3, urgent: 2, 'on-time': 1 }
-        return rank[b.urgency] - rank[a.urgency] || a.days_remaining - b.days_remaining
-      })
-
-      setOrders(allOrders)
-      setStats({
-        caskets: { total: casketsTotal, lowStock: casketsLowStock, backordered: casketsBackordered },
-        urns: { total: urnsTotal, lowStock: urnsLowStock, backordered: urnsBackordered },
-        orders: { total: allOrders.length, urgent: allOrders.filter(o => o.urgency !== 'on-time').length },
-        suppliers: suppliersCount
-      })
+      const { data, error } = await supabase.from('caskets').select('*')
+      if (error) throw error
+      setCaskets(data || [])
     } catch (err) {
-      console.error('Failed loading data', err)
+      console.error('Failed to fetch caskets:', err)
     } finally {
       setLoading(false)
     }
   }
 
-  const getOrderTypeColor = (type: string) => ({ casket: 'bg-sky-50 text-sky-700', urn: 'bg-violet-50 text-violet-700', special: 'bg-emerald-50 text-emerald-700' }[type] || '')
-  const getUrgencyColor = (urgency: string) => ({ late: 'border-l-red-400 bg-red-50', urgent: 'border-l-amber-400 bg-amber-50', 'on-time': 'border-l-emerald-400 bg-emerald-50' }[urgency] || '')
+  const handleCreate = async () => {
+    const { name, supplier, target_quantity } = form
+    if (!name.trim() || !supplier.trim()) {
+      setError('Name and Supplier are required.')
+      return
+    }
 
-  return loading
-    ? <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-stone-100"><p className="text-xl text-slate-600">Loading...</p></div>
-    : (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-stone-100">
-        {/* UI elements remain unchanged for brevity */}
-        <OrderModal isOpen={showOrderModal} onClose={() => setShowOrderModal(false)} itemType={orderType} onSuccess={loadData} />
-        {showArrivalModal && selectedOrder && (
-          <ArrivalModal
-            isOpen={showArrivalModal}
-            onClose={() => setShowArrivalModal(false)}
-            order={selectedOrder}
-            onSuccess={loadData}
-            caskets={caskets}
-          />
-        )}
+    try {
+      const { data, error } = await supabase.from('caskets').insert({
+        name: name.trim(),
+        supplier: supplier.trim(),
+        on_hand: 0,
+        on_order: 0,
+        target_quantity: target_quantity || 1,
+        backordered_quantity: 0
+      }).select().single()
+      if (error) throw error
+      setCaskets(prev => [...prev, data])
+      setForm({ name: '', supplier: '', target_quantity: 1, po_number: '', backorder: false })
+      setError('')
+    } catch (err) {
+      console.error('Failed to create casket:', err)
+      setError('Failed to create casket.')
+    }
+  }
+
+  const handleOrder = async (id: number) => {
+    const casket = caskets.find(c => c.id === id)
+    if (!casket || !form.po_number.trim()) {
+      setError('PO number is required.')
+      return
+    }
+
+    try {
+      const updated = {
+        on_hand: Math.max(0, casket.on_hand - 1),
+        on_order: form.backorder ? casket.on_order : casket.on_order + 1,
+        backordered_quantity: form.backorder ? casket.backordered_quantity + 1 : casket.backordered_quantity
+      }
+      const { error } = await supabase.from('caskets').update(updated).eq('id', id)
+      if (error) throw error
+      setForm({ ...form, po_number: '', backorder: false })
+      await loadCaskets()
+    } catch (err) {
+      console.error('Order failed:', err)
+      setError('Order failed.')
+    }
+  }
+
+  const handleMarkArrived = (casket: Casket) => {
+    setSelectedCasket(casket)
+    setShowArrivalModal(true)
+  }
+
+  const handleEdit = (id: number) => {
+    alert(`Edit functionality coming soon for casket ID ${id}`)
+  }
+
+  const handleDelete = async (id: number) => {
+    const confirmed = confirm('Are you sure you want to delete this casket?')
+    if (!confirmed) return
+    try {
+      const { error } = await supabase.from('caskets').delete().eq('id', id)
+      if (error) throw error
+      setCaskets(prev => prev.filter(c => c.id !== id))
+    } catch (err) {
+      console.error('Failed to delete casket:', err)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <p className="text-slate-500">Loading caskets...</p>
       </div>
     )
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-10">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold text-slate-800">Casket Inventory</h1>
+        <div className="flex gap-2">
+          <input
+            placeholder="Name"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            className="border border-slate-300 rounded px-2 py-1"
+          />
+          <input
+            placeholder="Supplier"
+            value={form.supplier}
+            onChange={(e) => setForm({ ...form, supplier: e.target.value })}
+            className="border border-slate-300 rounded px-2 py-1"
+          />
+          <input
+            type="number"
+            min={1}
+            placeholder="Target Qty"
+            value={form.target_quantity}
+            onChange={(e) => setForm({ ...form, target_quantity: parseInt(e.target.value) })}
+            className="w-28 border border-slate-300 rounded px-2 py-1"
+          />
+          <button
+            onClick={handleCreate}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded flex items-center"
+          >
+            <Plus size={16} className="mr-1" /> Add
+          </button>
+        </div>
+      </div>
+
+      {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {caskets.map(casket => {
+          const total = casket.on_hand + casket.on_order
+          const isLow = total < casket.target_quantity
+          const hasBackorder = casket.backordered_quantity > 0
+
+          return (
+            <div
+              key={casket.id}
+              className="bg-white rounded-xl shadow border border-slate-200 p-5 flex flex-col justify-between"
+            >
+              <div>
+                <h2 className="text-xl font-semibold text-slate-800 mb-1">{casket.name}</h2>
+                <p className="text-sm text-slate-500 mb-2">Supplier: {casket.supplier}</p>
+                <div className="text-sm space-y-1">
+                  <p><span className="font-medium text-slate-700">On Hand:</span> {casket.on_hand}</p>
+                  <p><span className="font-medium text-slate-700">On Order:</span> {casket.on_order}</p>
+                  <p><span className="font-medium text-slate-700">Target:</span> {casket.target_quantity}</p>
+                  <p><span className="font-medium text-slate-700">Backordered:</span> {casket.backordered_quantity}</p>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <input
+                    placeholder="PO#"
+                    value={form.po_number}
+                    onChange={(e) => setForm({ ...form, po_number: e.target.value })}
+                    className="flex-1 border border-slate-300 rounded px-2 py-1"
+                  />
+                  <label className="flex items-center gap-1 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.backorder}
+                      onChange={(e) => setForm({ ...form, backorder: e.target.checked })}
+                    />
+                    Backorder
+                  </label>
+                </div>
+                <button
+                  onClick={() => handleOrder(casket.id)}
+                  className="bg-sky-600 hover:bg-sky-700 text-white px-3 py-1 rounded"
+                >
+                  Order Replacement
+                </button>
+                <button
+                  onClick={() => handleMarkArrived(casket)}
+                  className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 text-sm rounded px-3 py-1 flex items-center justify-center"
+                >
+                  <Truck size={16} className="mr-1" /> Mark Arrived
+                </button>
+                <div className="flex justify-between items-center mt-2">
+                  <div className="flex gap-2">
+                    {isLow && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded">Low Stock</span>}
+                    {hasBackorder && <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Backordered</span>}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEdit(casket.id)} className="text-sky-600 hover:text-sky-800" title="Edit">
+                      <Pencil size={18} />
+                    </button>
+                    <button onClick={() => handleDelete(casket.id)} className="text-red-600 hover:text-red-800" title="Delete">
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {showArrivalModal && selectedCasket && (
+        <ArrivalModal
+          isOpen={showArrivalModal}
+          onClose={() => setShowArrivalModal(false)}
+          order={selectedOrder} // instead of casket={...}
+          onSuccess={loadData}
+        />
+
+      )}
+    </div>
+  )
 }
