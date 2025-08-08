@@ -59,7 +59,9 @@ export default function DashboardPage() {
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black text-white p-8">
       <div className="mx-auto max-w-7xl space-y-8">
         <header className="flex items-center justify-between">
-          <h1 className="text-4xl font-extrabold tracking-tight">Inventory Dashboard</h1>
+<h1 className="text-4xl font-extrabold tracking-tight">
+  Inventory Dashboard <span className="text-white/40 text-base align-middle">· v2</span>
+</h1>
           <button
             onClick={load}
             className="rounded-lg border border-white/15 bg-white/10 px-4 py-2 text-sm hover:bg-white/15"
