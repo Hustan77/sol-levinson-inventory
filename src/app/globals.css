@@ -174,3 +174,47 @@
 .status-backordered:hover {
   box-shadow: 0 0 25px rgba(255, 255, 255, 0.4);
 }
+/* Futuristic backdrop + subtle film grain */
+.bg-grid {
+  background:
+    radial-gradient(1200px 600px at -10% -10%, rgba(56,189,248,.08), transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, rgba(168,85,247,.08), transparent 60%),
+    radial-gradient(700px 400px at 50% 120%, rgba(34,197,94,.06), transparent 60%);
+}
+
+/* Glass card surface */
+.glass {
+  background: linear-gradient(to bottom right, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: var(--tw-shadow), var(--tw-shadow-colored);
+}
+
+/* Thin inner stroke for definition */
+.inner-stroke {
+  position: relative;
+}
+.inner-stroke:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(255,255,255,.06);
+  pointer-events: none;
+}
+
+/* Animated sheen line (very subtle) */
+.sheen {
+  position: relative;
+  overflow: hidden;
+}
+.sheen:after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(75deg, transparent 30%, rgba(255,255,255,.06), transparent 70%);
+  transform: translateX(-120%);
+  animation: sheen 6s linear infinite;
+  mix-blend-mode: soft-light;
+}

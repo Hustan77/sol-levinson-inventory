@@ -1,70 +1,46 @@
 import React from "react";
+import GlassCard from "./GlassCard";
 
-type OrderStatus = "PENDING" | "ARRIVED" | "BACKORDERED" | string;
+type Status = "PENDING" | "ARRIVED" | "BACKORDERED" | "SPECIAL";
 
 export interface OrderCardData {
   id: number;
   productName: string;
   supplierName: string;
-  status: OrderStatus;
+  status: Status;
   poNumber: string;
   orderedAt: string;
   expectedAt?: string;
 }
 
-interface OrderCardProps {
-  order: OrderCardData;
-}
+export default function OrderCard({ order }: { order: OrderCardData }) {
+  const badge =
+    order.status === "ARRIVED" ? "bg-green-100 text-green-900"
+      : order.status === "BACKORDERED" ? "bg-red-100 text-red-900"
+      : order.status === "SPECIAL" ? "bg-purple-100 text-purple-900"
+      : "bg-amber-100 text-amber-900";
 
-const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
-  const glowClass =
-    order.status === "PENDING"
-      ? "status-pending"
-      : order.status === "ARRIVED"
-      ? "status-arrived"
-      : "status-backordered";
+  const glow =
+    order.status === "ARRIVED" ? "shadow-status-arrived"
+      : order.status === "BACKORDERED" ? "shadow-status-backordered"
+      : order.status === "SPECIAL" ? "shadow-status-special"
+      : "shadow-status-pending";
 
   return (
-    <div className={`rounded-xl bg-white dark:bg-neutral-900 p-5 shadow ${glowClass}`}>
-      {/* Header */}
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">
-          {order.productName}
-        </h3>
-        <span
-          className={`rounded-full px-3 py-1 text-sm font-medium ${
-            order.status === "PENDING"
-              ? "bg-amber-100 text-amber-800"
-              : order.status === "ARRIVED"
-              ? "bg-green-100 text-green-800"
-              : "bg-red-100 text-red-800"
-          }`}
-        >
+    <GlassCard className={`p-5 transition-all duration-300 ease-morph hover:scale-[1.02] ${glow}`}>
+      <div className="flex items-start justify-between">
+        <h3 className="text-lg font-semibold">{order.productName}</h3>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badge}`}>
           {order.status}
         </span>
       </div>
 
-      {/* Supplier */}
-      <p className="mb-1 text-sm text-neutral-500 dark:text-neutral-400">
-        Supplier: <span className="font-medium">{order.supplierName}</span>
-      </p>
-
-      {/* PO Number */}
-      <p className="mb-1 text-sm text-neutral-500 dark:text-neutral-400">
-        PO#: <span className="font-medium">{order.poNumber}</span>
-      </p>
-
-      {/* Dates */}
-      <p className="text-sm text-neutral-500 dark:text-neutral-400">
-        Ordered: <span className="font-medium">{order.orderedAt}</span>
-      </p>
-      {order.expectedAt && (
-        <p className="text-sm text-neutral-500 dark:text-neutral-400">
-          Expected: <span className="font-medium">{order.expectedAt}</span>
-        </p>
-      )}
-    </div>
+      <div className="mt-3 space-y-1 text-sm text-white/75">
+        <p>Supplier: <span className="font-medium text-white">{order.supplierName}</span></p>
+        <p>PO#: <span className="font-medium text-white">{order.poNumber}</span></p>
+        <p>Ordered: <span className="font-medium text-white">{order.orderedAt}</span></p>
+        {order.expectedAt && <p>Expected: <span className="font-medium text-white">{order.expectedAt}</span></p>}
+      </div>
+    </GlassCard>
   );
-};
-
-export default OrderCard;
+}
