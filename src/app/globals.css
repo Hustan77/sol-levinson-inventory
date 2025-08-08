@@ -153,3 +153,24 @@
     @apply bg-background text-foreground;
   }
 }
+/* Add at the bottom of globals.css */
+.status-pending {
+  box-shadow: 0 0 15px rgba(251, 191, 36, 0.6); /* amber glow */
+  transition: box-shadow 0.3s ease;
+}
+
+.status-arrived {
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.6); /* green glow */
+  transition: box-shadow 0.3s ease;
+}
+
+.status-backordered {
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.6); /* red glow */
+  transition: box-shadow 0.3s ease;
+}
+
+.status-pending:hover,
+.status-arrived:hover,
+.status-backordered:hover {
+  box-shadow: 0 0 25px rgba(255, 255, 255, 0.4);
+}

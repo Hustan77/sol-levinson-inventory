@@ -1,8 +1,8 @@
 import React from "react";
 
-type OrderStatus = "PENDING" | "ARRIVED" | "BACKORDERED";
+type OrderStatus = "PENDING" | "ARRIVED" | "BACKORDERED" | string;
 
-interface Order {
+export interface OrderCardData {
   id: number;
   productName: string;
   supplierName: string;
@@ -13,28 +13,26 @@ interface Order {
 }
 
 interface OrderCardProps {
-  order: Order;
+  order: OrderCardData;
 }
 
 const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
   const glowClass =
     order.status === "PENDING"
-      ? "shadow-status-pending"
+      ? "status-pending"
       : order.status === "ARRIVED"
-      ? "shadow-status-arrived"
-      : "shadow-status-backordered";
+      ? "status-arrived"
+      : "status-backordered";
 
   return (
-    <div
-      className={`rounded-xl p-5 bg-white dark:bg-neutral-900 transition-all hover:scale-[1.02] ${glowClass}`}
-    >
+    <div className={`rounded-xl bg-white dark:bg-neutral-900 p-5 shadow ${glowClass}`}>
       {/* Header */}
-      <div className="flex justify-between items-center mb-3">
+      <div className="mb-3 flex items-center justify-between">
         <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">
           {order.productName}
         </h3>
         <span
-          className={`px-3 py-1 rounded-full text-sm font-medium ${
+          className={`rounded-full px-3 py-1 text-sm font-medium ${
             order.status === "PENDING"
               ? "bg-amber-100 text-amber-800"
               : order.status === "ARRIVED"
@@ -47,12 +45,12 @@ const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
       </div>
 
       {/* Supplier */}
-      <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-1">
+      <p className="mb-1 text-sm text-neutral-500 dark:text-neutral-400">
         Supplier: <span className="font-medium">{order.supplierName}</span>
       </p>
 
       {/* PO Number */}
-      <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-1">
+      <p className="mb-1 text-sm text-neutral-500 dark:text-neutral-400">
         PO#: <span className="font-medium">{order.poNumber}</span>
       </p>
 
