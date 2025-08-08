@@ -1,30 +1,72 @@
-'use client'
+import React from "react";
 
-import React from 'react'
+type OrderStatus = "PENDING" | "ARRIVED" | "BACKORDERED";
 
 interface Order {
-  id: number
-  deceased_name: string
-  po_number: string
-  expected_date: string
-  status: 'PENDING' | 'ARRIVED'
+  id: number;
+  productName: string;
+  supplierName: string;
+  status: OrderStatus;
+  poNumber: string;
+  orderedAt: string;
+  expectedAt?: string;
 }
 
-export default function OrderCard({ order }: { order: Order }) {
-  return (
-    <div className="rounded-lg bg-black/40 p-4 text-white shadow-md border border-white/10 backdrop-blur-lg transition hover:scale-[1.01] hover:shadow-xl duration-300 ease-in-out">
-      <h3 className="text-lg font-semibold">{order.deceased_name}</h3>
-      <p className="text-sm text-white/80">PO: {order.po_number}</p>
-      <p className="text-sm text-white/80">Expected: {order.expected_date}</p>
-      <span
-        className={`mt-2 inline-block rounded px-2 py-1 text-xs font-medium ${
-          order.status === 'ARRIVED'
-            ? 'bg-green-500/20 text-green-300'
-            : 'bg-yellow-500/20 text-yellow-300'
-        }`}
-      >
-        {order.status}
-      </span>
-    </div>
-  )
+interface OrderCardProps {
+  order: Order;
 }
+
+const OrderCard: React.FC<OrderCardProps> = ({ order }) => {
+  const glowClass =
+    order.status === "PENDING"
+      ? "shadow-status-pending"
+      : order.status === "ARRIVED"
+      ? "shadow-status-arrived"
+      : "shadow-status-backordered";
+
+  return (
+    <div
+      className={`rounded-xl p-5 bg-white dark:bg-neutral-900 transition-all hover:scale-[1.02] ${glowClass}`}
+    >
+      {/* Header */}
+      <div className="flex justify-between items-center mb-3">
+        <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">
+          {order.productName}
+        </h3>
+        <span
+          className={`px-3 py-1 rounded-full text-sm font-medium ${
+            order.status === "PENDING"
+              ? "bg-amber-100 text-amber-800"
+              : order.status === "ARRIVED"
+              ? "bg-green-100 text-green-800"
+              : "bg-red-100 text-red-800"
+          }`}
+        >
+          {order.status}
+        </span>
+      </div>
+
+      {/* Supplier */}
+      <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-1">
+        Supplier: <span className="font-medium">{order.supplierName}</span>
+      </p>
+
+      {/* PO Number */}
+      <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-1">
+        PO#: <span className="font-medium">{order.poNumber}</span>
+      </p>
+
+      {/* Dates */}
+      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+        Ordered: <span className="font-medium">{order.orderedAt}</span>
+      </p>
+      {order.expectedAt && (
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">
+          Expected: <span className="font-medium">{order.expectedAt}</span>
+        </p>
+      )}
+    </div>
+  );
+};
+
+export default OrderCard;

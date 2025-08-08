@@ -3,74 +3,52 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import GlassCard from './components/GlassCard'
-import OrderBadge from './components/OrderBadge'
-import NewOrderModal from './components/NewOrderModal'
+import OrderCard from './components/OrderCard'
 
-// ---- Types that match v_orders_enriched view ----
-type ItemKind = 'CASKET' | 'URN'
-type OrderKind = 'STOCK' | 'SPECIAL'
-type OrderStatus = 'PENDING' | 'BACKORDERED' | 'ARRIVED' | 'CANCELLED' | string
-
-type EnrichedOrder = {
+type ViewRow = {
   id: number
-  item_kind: ItemKind
-  order_kind: OrderKind
-  status: OrderStatus
-  deceased_name: string | null
-  po_number: string | null
-  expected_date: string | null
   product_name: string | null
-  ordering_instructions: string | null
   supplier_name: string | null
-  created_at: string
+  status: 'PENDING' | 'ARRIVED' | 'BACKORDERED' | string
+  po_number: string | null
+  created_at: string // orderedAt
+  expected_date: string | null
 }
 
-export default function Page() {
-  // KPI counts
-  const [counts, setCounts] = useState({
-    caskets: 0,
-    urns: 0,
-    suppliers: 0,
-    orders: 0,
-  })
+type Kpi = { caskets: number; urns: number; suppliers: number; orders: number }
 
-  // Orders list
-  const [orders, setOrders] = useState<EnrichedOrder[]>([])
+export default function DashboardPage() {
+  const [kpi, setKpi] = useState<Kpi>({ caskets: 0, urns: 0, suppliers: 0, orders: 0 })
+  const [loading, setLoading] = useState(true)
+  const [orders, setOrders] = useState<ViewRow[]>([])
 
-  // Modal state
-  const [newOpen, setNewOpen] = useState(false)
-
-  // Load dashboard data
   async function load() {
-    // Fetch counts in parallel
-    const [c1, c2, c3, c4] = await Promise.all([
+    setLoading(true)
+
+    // 1) KPIs in parallel
+    const [casketsCnt, urnsCnt, suppliersCnt, ordersCnt] = await Promise.all([
       supabase.from('caskets').select('*', { count: 'exact', head: true }),
       supabase.from('urns').select('*', { count: 'exact', head: true }),
       supabase.from('suppliers').select('*', { count: 'exact', head: true }),
       supabase.from('orders').select('*', { count: 'exact', head: true }),
     ])
 
-    const casketsCount = c1.count ?? 0
-    const urnsCount = c2.count ?? 0
-    const suppliersCount = c3.count ?? 0
-    const ordersCount = c4.count ?? 0
+    setKpi({
+      caskets: casketsCnt.count ?? 0,
+      urns: urnsCnt.count ?? 0,
+      suppliers: suppliersCnt.count ?? 0,
+      orders: ordersCnt.count ?? 0,
+    })
 
-    // Fetch enriched orders for list (includes product/supplier names + instructions)
-    const { data: orderRows } = await supabase
+    // 2) Orders list from the enriched view
+    const { data } = await supabase
       .from('v_orders_enriched')
       .select('*')
       .order('expected_date', { ascending: true })
       .order('created_at', { ascending: false })
 
-    setCounts({
-      caskets: casketsCount,
-      urns: urnsCount,
-      suppliers: suppliersCount,
-      orders: ordersCount,
-    })
-
-    setOrders((orderRows as EnrichedOrder[]) ?? [])
+    setOrders((data as ViewRow[]) ?? [])
+    setLoading(false)
   }
 
   useEffect(() => {
@@ -78,104 +56,90 @@ export default function Page() {
   }, [])
 
   return (
-    <main className="p-8">
-      <div className="mx-auto max-w-6xl space-y-8">
-        {/* Header */}
+    <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black text-white p-8">
+      <div className="mx-auto max-w-7xl space-y-8">
         <header className="flex items-center justify-between">
-          <h1 className="text-4xl font-bold">Inventory Dashboard</h1>
+          <h1 className="text-4xl font-extrabold tracking-tight">Inventory Dashboard</h1>
           <button
-            onClick={() => setNewOpen(true)}
-            className="rounded-xl bg-indigo-600 px-4 py-2 text-white shadow hover:bg-indigo-700"
-            aria-label="Create new order"
+            onClick={load}
+            className="rounded-lg border border-white/15 bg-white/10 px-4 py-2 text-sm hover:bg-white/15"
           >
-            New Order
+            Refresh
           </button>
         </header>
 
-        {/* KPI Tiles */}
+        {/* KPI tiles */}
         <section className="grid grid-cols-2 gap-6 md:grid-cols-4">
-          <GlassCard title="Caskets" value={counts.caskets} />
-          <GlassCard title="Urns" value={counts.urns} />
-          <GlassCard title="Suppliers" value={counts.suppliers} />
-          <GlassCard title="Active Orders" value={counts.orders} />
+          <KpiCard label="Caskets" value={kpi.caskets} />
+          <KpiCard label="Urns" value={kpi.urns} />
+          <KpiCard label="Suppliers" value={kpi.suppliers} />
+          <KpiCard label="Active Orders" value={kpi.orders} />
         </section>
 
-        {/* Orders List */}
-        <section>
-          <h2 className="mb-4 text-2xl font-semibold">All Orders</h2>
-
-          <div className="grid gap-4">
-            {orders.map((o) => (
-              <div
-                key={o.id}
-                className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-md shadow transition hover:shadow-lg"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-lg font-semibold">
-                      {o.deceased_name || 'Deceased: N/A'}
-                    </div>
-
-                    <div className="text-sm text-white/70">
-                      {o.item_kind} • {o.order_kind} • {o.product_name ?? 'Custom'}
-                    </div>
-
-                    <div className="text-sm text-white/70">
-                      PO:{' '}
-                      <span className="text-white">
-                        {o.po_number ?? 'N/A'}
-                      </span>{' '}
-                      • Expected:{' '}
-                      <span className="text-white">
-                        {o.expected_date ?? 'TBD'}
-                      </span>
-                    </div>
-
-                    {o.supplier_name && (
-                      <div className="text-sm text-white/60">
-                        Supplier: {o.supplier_name}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Status + Mark Arrived */}
-                  <OrderBadge
-                    status={o.status}
-                    onArrive={
-                      o.status === 'PENDING' || o.status === 'BACKORDERED'
-                        ? async () => {
-                            const { error } = await supabase
-                              .from('orders')
-                              .update({
-                                status: 'ARRIVED',
-                                arrival_marked_at: new Date().toISOString(),
-                              })
-                              .eq('id', o.id)
-
-                            if (!error) await load()
-                          }
-                        : undefined
-                    }
-                  />
-                </div>
-
-                {/* Ordering Instructions panel */}
-                <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-white/80">
-                  <div className="mb-1 font-medium text-white/90">
-                    Ordering Instructions
-                  </div>
-                  <div className="whitespace-pre-wrap">
-                    {o.ordering_instructions ?? '—'}
-                  </div>
-                </div>
-              </div>
-            ))}
+        {/* Orders */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-semibold">Orders</h2>
+            {loading && <span className="text-sm text-white/60">Loading…</span>}
           </div>
+
+          {orders.length === 0 && !loading ? (
+            <EmptyState />
+          ) : (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {orders.map((r) => (
+                <OrderCard
+                  key={r.id}
+                  order={{
+                    id: r.id,
+                    productName: r.product_name ?? 'Custom Item',
+                    supplierName: r.supplier_name ?? '—',
+                    status: normalizeStatus(r.status),
+                    poNumber: r.po_number ?? '—',
+                    orderedAt: toDate(r.created_at),
+                    expectedAt: r.expected_date ? toDate(r.expected_date) : undefined,
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </section>
       </div>
-
-      {/* New Order Modal */}
-      <NewOrderModal open={newOpen} onClose={() => setNewOpen(false)} onCreated={load} />
     </main>
+  )
+}
+
+/* ---------- helpers & small components ---------- */
+
+function normalizeStatus(s: string): 'PENDING' | 'ARRIVED' | 'BACKORDERED' {
+  const u = s.toUpperCase()
+  if (u.includes('ARRIVED') || u === 'DELIVERED') return 'ARRIVED'
+  if (u.includes('BACK')) return 'BACKORDERED'
+  return 'PENDING'
+}
+
+function toDate(iso: string) {
+  try {
+    const d = new Date(iso)
+    return d.toLocaleDateString()
+  } catch {
+    return iso
+  }
+}
+
+function KpiCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/10 backdrop-blur-md transition-transform will-change-transform hover:scale-[1.02]">
+      <p className="text-xs tracking-widest text-white/60">{label.toUpperCase()}</p>
+      <p className="mt-1 text-3xl font-extrabold">{value}</p>
+    </div>
+  )
+}
+
+function EmptyState() {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center text-white/70 backdrop-blur-md">
+      No orders yet. Use your ordering flow to add one, then come back here.
+    </div>
   )
 }
