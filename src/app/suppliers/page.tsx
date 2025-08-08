@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Pencil, Trash2, Plus } from 'lucide-react'
+import { Trash2, Plus } from 'lucide-react'
 
 interface Supplier {
   id: number
